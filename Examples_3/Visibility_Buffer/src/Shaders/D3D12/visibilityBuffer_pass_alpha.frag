@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  * 
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -25,10 +25,6 @@
 #include "shader_defs.h"
 #include "packing.h"
 
-#ifndef CONF_EARLY_DEPTH_STENCIL
-#define CONF_EARLY_DEPTH_STENCIL
-#endif
-
 ConstantBuffer<RootConstant> indirectRootConstant : register(b1);
 
 struct PsInAlphaTested
@@ -37,7 +33,7 @@ struct PsInAlphaTested
 	float2 texCoord : TEXCOORD0;
 };
 
-StructuredBuffer<uint> indirectMaterialBuffer : register(t0);
+StructuredBuffer<uint> indirectMaterialBuffer : register(t0, UPDATE_FREQ_PER_FRAME);
 Texture2D diffuseMaps[] : register(t1);
 SamplerState textureFilter : register(s0);
 
@@ -47,7 +43,6 @@ uint calculateOutputVBID(bool opaque, uint drawID, uint primitiveID)
     return (opaque) ? drawID_primID : (1 << 31) | drawID_primID;
 }
 
-CONF_EARLY_DEPTH_STENCIL
 float4 main(PsInAlphaTested In, uint primitiveId : SV_PrimitiveID) : SV_Target
 {
     uint matBaseSlot = BaseMaterialBuffer(true, VIEW_CAMERA); //1 is camera view, 0 is shadow map view

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -390,19 +390,20 @@ float4 QJulia(float3 rO,                // ray origin
 }
 
 //[numthreads(16, 16, 1)]
-kernel void stageMain(uint3 Gid [[threadgroup_position_in_grid]],
-                      uint3 DTid [[thread_position_in_grid]],
-                      uint3 GTid [[thread_position_in_threadgroup]],
-                      uint GI [[thread_index_in_threadgroup]],
-                      constant UniformBlock0& uniformBlock [[buffer(0)]],
-                      texture2d<float,access::write> outputTexture [[texture(0)]])
+kernel void stageMain(uint3 Gid                             [[threadgroup_position_in_grid]],
+                      uint3 DTid                            [[thread_position_in_grid]],
+                      uint3 GTid                            [[thread_position_in_threadgroup]],
+                      uint GI                               [[thread_index_in_threadgroup]],
+					  texture2d<float,access::write> outputTexture [[texture(0)]],
+                      constant UniformBlock0& uniformBlock         [[buffer(0)]]
+)
 {
 
 	float4 coord = float4((float)DTid.x, (float)DTid.y, 0.0f, 0.0f);
 
 	float2 size = float2((float)uniformBlock.c_width, (float)uniformBlock.c_height);
 	float scale = min(size.x, size.y);
-	float2 position = (coord.xy - float2(0.5f, 0.5f) * size) / scale *BOUNDING_RADIUS_2 * uniformBlock.zoom;
+	float2 position = (coord.xy - float2(0.5f, 0.5f) * size) / scale * BOUNDING_RADIUS_2 * uniformBlock.zoom;
 
 	float3 light = float3(1.5f, 0.5f, 4.0f);
 	float3 eye = float3(0.0f, 0.0f, 4.0f);
@@ -420,4 +421,5 @@ kernel void stageMain(uint3 Gid [[threadgroup_position_in_grid]],
 	float4 color = QJulia(rO, rD, uniformBlock.c_mu, uniformBlock.c_epsilon, eye, light, uniformBlock.c_renderSoftShadows, uniformBlock.c_diffuse);
 
 	outputTexture.write(color, DTid.xy);
+	
 }

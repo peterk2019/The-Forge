@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2019 Confetti Interactive Inc.
+* Copyright (c) 2018-2020 The Forge Interactive Inc.
 *
 * This file is part of The-Forge
 * (see https://github.com/ConfettiFX/The-Forge).
@@ -33,7 +33,7 @@ cbuffer RootConstant
 	float axis;
 };
 
-Texture2D Source : register(t0, space3);
+Texture2D Source : register(t0);
 SamplerState LinearSampler : register(s0);
 
 float4 main(VSOutput input) : SV_Target
@@ -43,7 +43,7 @@ float4 main(VSOutput input) : SV_Target
 	const float Offsets[StepCount] = { 0.53805f, 2.06278f };
 
 	uint2 dim;
-	Source.GetDimensions(dim[0], dim[1]);
+	Source.GetDimensions(dim.x, dim.y);
 	float2 stepSize = float2((1.0f - axis) / dim[0], axis / dim[1]);
 
 	float4 output = 0.0f;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -23,9 +23,9 @@
 */
 
 #include "IRenderer.h"
-#include "../OS/Interfaces/ILogManager.h"
+#include "../OS/Interfaces/ILog.h"
 
-#include "../../Common_3/OS/Interfaces/IMemoryManager.h"
+#include "../OS/Interfaces/IMemory.h"
 
 //This file contains shader reflection code that is the same for all platforms.
 //We know it's the same for all platforms since it only interacts with the
@@ -39,8 +39,11 @@ static bool ShaderResourceCmp(ShaderResource* a, ShaderResource* b)
 	isSame = isSame && (a->type == b->type);
 	isSame = isSame && (a->set == b->set);
 	isSame = isSame && (a->reg == b->reg);
-	isSame = isSame && (a->size == b->size);
 
+#ifdef METAL
+    isSame = isSame && (a->mtlArgumentDescriptors.mArgumentIndex == b->mtlArgumentDescriptors.mArgumentIndex);
+#endif
+    
 #ifdef RESOURCE_NAME_CHECK
 	// we may not need this, the rest is enough but if we want to be super sure we can do this check
 	isSame = isSame && (a->name_size == b->name_size);
@@ -48,7 +51,7 @@ static bool ShaderResourceCmp(ShaderResource* a, ShaderResource* b)
 	if (isSame == false)
 		return isSame;
 
-	isSame = isSame && (strcmp(a->name, b->name) == 0);
+	isSame = (strcmp(a->name, b->name) == 0);
 #endif
 	return isSame;
 }
@@ -65,7 +68,7 @@ static bool ShaderVariableCmp(ShaderVariable* a, ShaderVariable* b)
 	if (isSame == false)
 		return isSame;
 
-	isSame = isSame && (strcmp(a->name, b->name) == 0);
+	isSame = (strcmp(a->name, b->name) == 0);
 
 	return isSame;
 }
@@ -75,10 +78,10 @@ void destroyShaderReflection(ShaderReflection* pReflection)
 	if (pReflection == NULL)
 		return;
 
-	conf_free(pReflection->pNamePool);
-	conf_free(pReflection->pVertexInputs);
-	conf_free(pReflection->pShaderResources);
-	conf_free(pReflection->pVariables);
+	tf_free(pReflection->pNamePool);
+	tf_free(pReflection->pVertexInputs);
+	tf_free(pReflection->pShaderResources);
+	tf_free(pReflection->pVariables);
 }
 
 void createPipelineReflection(ShaderReflection* pReflection, uint32_t stageCount, PipelineReflection* pOutReflection)
@@ -217,7 +220,7 @@ void createPipelineReflection(ShaderReflection* pReflection, uint32_t stageCount
 	//Copy over the shader resources in a dynamic array of the correct size
 	if (resourceCount)
 	{
-		pResources = (ShaderResource*)conf_malloc(sizeof(ShaderResource) * resourceCount);
+		pResources = (ShaderResource*)tf_calloc(resourceCount, sizeof(ShaderResource));
 
 		for (uint32_t i = 0; i < resourceCount; ++i)
 		{
@@ -229,7 +232,7 @@ void createPipelineReflection(ShaderReflection* pReflection, uint32_t stageCount
 	//Copy over the shader variables in a dynamic array of the correct size
 	if (variableCount)
 	{
-		pVariables = (ShaderVariable*)conf_malloc(sizeof(ShaderVariable) * variableCount);
+		pVariables = (ShaderVariable*)tf_malloc(sizeof(ShaderVariable) * variableCount);
 
 		for (uint32_t i = 0; i < variableCount; ++i)
 		{
@@ -273,6 +276,6 @@ void destroyPipelineReflection(PipelineReflection* pReflection)
 	for (uint32_t i = 0; i < pReflection->mStageReflectionCount; ++i)
 		destroyShaderReflection(&pReflection->mStageReflections[i]);
 
-	conf_free(pReflection->pShaderResources);
-	conf_free(pReflection->pVariables);
+	tf_free(pReflection->pShaderResources);
+	tf_free(pReflection->pVariables);
 }

@@ -993,21 +993,21 @@ static DRFLAC_INLINE drflac_bool32 drflac_has_sse41()
     #endif
 #endif
 
-#include "../../../../OS/Interfaces/ILogManager.h"
-#include "../../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../../OS/Interfaces/ILog.h"
+#include "../../../../OS/Interfaces/IMemory.h"
 
 // Standard library stuff.
 #ifndef DRFLAC_ASSERT
 #define DRFLAC_ASSERT(expression)           ASSERT(expression)
 #endif
 #ifndef DRFLAC_MALLOC
-#define DRFLAC_MALLOC(sz)                   conf_malloc((sz))
+#define DRFLAC_MALLOC(sz)                   tf_malloc((sz))
 #endif
 #ifndef DRFLAC_REALLOC
-#define DRFLAC_REALLOC(p, sz)               conf_realloc((p), (sz))
+#define DRFLAC_REALLOC(p, sz)               tf_realloc((p), (sz))
 #endif
 #ifndef DRFLAC_FREE
-#define DRFLAC_FREE(p)                      conf_free((p))
+#define DRFLAC_FREE(p)                      tf_free((p))
 #endif
 #ifndef DRFLAC_COPY_MEMORY
 #define DRFLAC_COPY_MEMORY(dst, src, sz)    memcpy((dst), (src), (sz))
@@ -6130,11 +6130,12 @@ static FILE* drflac__fopen(const char* filename)
 {
     FILE* pFile;
 #ifdef _MSC_VER
-    if (fopen_s(&pFile, filename, "rb") != 0) {
+	pFile = (FILE*)open_file(filename, "rb");
+	if (pFile != 0) {
         return NULL;
     }
 #else
-    pFile = fopen(filename, "rb");
+    pFile = (FILE*)open_file(filename, "rb");
     if (pFile == NULL) {
         return NULL;
     }

@@ -17,6 +17,7 @@ public:
 		manager_(manager),
 		device_(device),
 		textInputEnabled_(true),
+		textCount_(0),
 		dialect_(manager_.GetAllocator()),
 		state_(&state),
 		previousState_(&previousState),
@@ -58,6 +59,7 @@ public:
 
 		dialect_[VK_DECIMAL] = KeyPeriod;
 		dialect_[VK_SUBTRACT] = KeyKpSubtract;
+		dialect_[VK_ADD] = KeyKpAdd;
 		dialect_[VK_NUMPAD0] = KeyKpInsert;
 		dialect_[VK_NUMPAD1] = KeyKpEnd;
 		dialect_[VK_NUMPAD2] = KeyKpDown;
@@ -137,7 +139,14 @@ public:
 		dialect_[VK_OEM_3] = KeyExtra5;
 		dialect_[VK_OEM_1] = KeyExtra6;
 
+		//added
+		dialect_[VK_MULTIPLY] = KeyKpMultiply;
+		dialect_[VK_NUMLOCK] = KeyNumLock;
+		dialect_[VK_OEM_CLEAR] = KeyClear;
+
 		dialect_[0xff] = KeyFn; // Marked as "reserved".
+		
+		memset(textBuffer_, 0, sizeof(textBuffer_));
 	}
 
 	InputDevice::DeviceVariant GetVariant() const
@@ -149,35 +158,16 @@ public:
 	{
 		delta_ = delta;
 		*state_ = nextState_;
+		textCount_ = 0;
+		memset(textBuffer_, 0, sizeof(textBuffer_));
 	}
 
 	bool IsTextInputEnabled() const { return textInputEnabled_; }
 	void SetTextInputEnabled(bool enabled) { textInputEnabled_ = enabled; }
-
-	char GetNextCharacter(gainput::DeviceButtonId buttonId)
+	wchar_t* GetTextInput(uint32_t* count)
 	{
-		if (!textBuffer_.CanGet())
-		{
-			return 0;
-		}
-		InputCharDesc currentDesc = textBuffer_.Get();
-
-		//Removed buffered inputs for which we didn't call GetNextCharacter
-		if (buttonId != gainput::InvalidDeviceButtonId && buttonId < gainput::KeyCount_)
-		{
-			while (currentDesc.buttonId != buttonId)
-			{
-				if (!textBuffer_.CanGet())
-				{
-					return 0;
-				}
-				currentDesc = textBuffer_.Get();
-			}
-		}
-
-		//if button id was provided then we return the appropriate character
-		//else we return the first buffered character
-		return currentDesc.inputChar;
+		*count = textCount_;
+		return textBuffer_;
 	}
 
 	void HandleMessage(const MSG& msg)
@@ -204,16 +194,13 @@ public:
 			{
 				return;
 			}
-			const char charKey = key;
+			const wchar_t charKey = (wchar_t)key;
 			unsigned char scancode = ((unsigned char*)&msg.lParam)[2];
 			unsigned int virtualKey = MapVirtualKey(scancode, MAPVK_VSC_TO_VK);
 
-			if (dialect_.count(virtualKey))
+			if (dialect_.count(virtualKey) || dialect_.count(charKey))
 			{
-				InputCharDesc inputDesc;
-				inputDesc.buttonId = dialect_[virtualKey];
-				inputDesc.inputChar = charKey;
-				textBuffer_.Put(inputDesc);
+				textBuffer_[textCount_++] = charKey;
 			}
 			
 #ifdef GAINPUT_DEBUG
@@ -295,21 +282,6 @@ public:
 		{
 			const DeviceButtonId buttonId = dialect_[winKey];
 			HandleButton(device_, nextState_, delta_, buttonId, pressed);
-
-			if (winKey >= VK_NUMPAD0 && winKey <= VK_NUMPAD9)
-			{
-				InputCharDesc inputDesc;
-				inputDesc.buttonId = dialect_[winKey];
-				inputDesc.inputChar = '0' + (winKey - VK_NUMPAD0);
-				textBuffer_.Put(inputDesc);
-			}
-			else if (winKey == VK_DECIMAL)
-			{
-				InputCharDesc inputDesc;
-				inputDesc.buttonId = dialect_[winKey];
-				inputDesc.inputChar = '.';
-				textBuffer_.Put(inputDesc);
-			}
 		}
 	}
 
@@ -322,12 +294,8 @@ private:
 	InputManager& manager_;
 	InputDevice& device_;
 	bool textInputEnabled_;
-	struct InputCharDesc
-	{
-		char inputChar;
-		gainput::DeviceButtonId buttonId;
-	};
-	RingBuffer<GAINPUT_TEXT_INPUT_QUEUE_LENGTH, InputCharDesc> textBuffer_;
+	wchar_t textBuffer_[GAINPUT_TEXT_INPUT_QUEUE_LENGTH];
+	uint32_t textCount_;
 	HashMap<unsigned, DeviceButtonId> dialect_;
 	InputState* state_;
 	InputState* previousState_;

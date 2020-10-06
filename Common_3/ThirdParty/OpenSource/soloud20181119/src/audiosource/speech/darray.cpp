@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "darray.h"
-#include "../../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../../OS/Interfaces/IMemory.h"
 
 darray::darray()
 {
@@ -12,7 +12,7 @@ darray::darray()
 
 void darray::clear()
 {
-	conf_free(mData);
+	tf_free(mData);
 	mAllocChunk = 128;
 	mAllocated = mUsed = 0;
 	mData = NULL;
@@ -38,10 +38,10 @@ char * darray::getDataInPos(int aPosition)
 			mAllocChunk *= 2;
 		}
 
-		char *newdata = (char*)conf_realloc(mData, newsize);
+		char *newdata = (char*)tf_realloc(mData, newsize);
 		if (!newdata)
 		{
-			conf_free(mData);
+			tf_free(mData);
 			mData = NULL;
 			mAllocated = mUsed = 0;
 			return NULL;

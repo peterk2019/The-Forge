@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -22,31 +22,38 @@
  * under the License.
 */
 
+#ifdef USE_TEXT_PRECOMPILED_SHADERS
+#include "Shaders/Compiled/fontstash2D.vert.h"
+#include "Shaders/Compiled/fontstash3D.vert.h"
+#include "Shaders/Compiled/fontstash.frag.h"
+#endif
+
 #include "Fontstash.h"
 
 // include Fontstash (should be after MemoryTracking so that it also detects memory free/remove in fontstash)
 #define FONTSTASH_IMPLEMENTATION
 #include "../../Common_3/ThirdParty/OpenSource/Fontstash/src/fontstash.h"
 
-#include "../../Common_3/OS/Interfaces/ILogManager.h"
+#include "../../Common_3/ThirdParty/OpenSource/EASTL/vector.h"
+#include "../../Common_3/ThirdParty/OpenSource/EASTL/string.h"
+
+#include "../../Common_3/OS/Interfaces/ILog.h"
 #include "../../Common_3/OS/Interfaces/IFileSystem.h"
-#include "../../Common_3/OS/Image/Image.h"
 #include "../../Common_3/OS/Core/RingBuffer.h"
 #include "../../Common_3/Renderer/IRenderer.h"
-#include "../../Common_3/Renderer/ResourceLoader.h"
+#include "../../Common_3/Renderer/IResourceLoader.h"
 
 #include "../../Common_3/ThirdParty/OpenSource/EASTL/vector.h"
+#include "../../Common_3/ThirdParty/OpenSource/tinyimageformat/tinyimageformat_query.h"
 
-#include "../../Common_3/OS/Interfaces/IMemoryManager.h"
-
-FSRoot FSR_MIDDLEWARE_TEXT = FSR_Middleware0;
+#include "../../Common_3/OS/Interfaces/IMemory.h"
 
 class _Impl_FontStash
 {
-	public:
+public:
 	_Impl_FontStash()
 	{
-		pCurrentTexture = NULL;
+		pCurrentTexture = {};
 		mWidth = 0;
 		mHeight = 0;
 		pContext = NULL;
@@ -54,7 +61,7 @@ class _Impl_FontStash
 		mText3D = false;
 	}
 
-	void init(Renderer* renderer, int width_, int height_)
+	bool init(Renderer* renderer, int width_, int height_, uint32_t ringSizeBytes)
 	{
 		pRenderer = renderer;
 
@@ -63,18 +70,17 @@ class _Impl_FontStash
 		desc.mArraySize = 1;
 		desc.mDepth = 1;
 		desc.mDescriptors = DESCRIPTOR_TYPE_TEXTURE;
-		desc.mFlags = TEXTURE_CREATION_FLAG_OWN_MEMORY_BIT;
-		desc.mFormat = ImageFormat::R8;
+		desc.mFormat = TinyImageFormat_R8_UNORM;
 		desc.mHeight = height_;
 		desc.mMipLevels = 1;
 		desc.mSampleCount = SAMPLE_COUNT_1;
-		desc.mStartState = RESOURCE_STATE_COPY_DEST;
+		desc.mStartState = RESOURCE_STATE_COMMON;
 		desc.mWidth = width_;
-		desc.pDebugName = L"Fontstash Texture";
+		desc.pName = "Fontstash Texture";
 		TextureLoadDesc loadDesc = {};
 		loadDesc.ppTexture = &pCurrentTexture;
 		loadDesc.pDesc = &desc;
-		addResource(&loadDesc);
+		addResource(&loadDesc, NULL);
 
 		// create FONS context
 		FONSparams params;
@@ -100,6 +106,105 @@ class _Impl_FontStash
 									ADDRESS_MODE_CLAMP_TO_EDGE };
 		addSampler(pRenderer, &samplerDesc, &pDefaultSampler);
 
+#ifdef USE_TEXT_PRECOMPILED_SHADERS
+		BinaryShaderDesc binaryShaderDesc = {};
+		binaryShaderDesc.mStages = SHADER_STAGE_VERT | SHADER_STAGE_FRAG;
+		binaryShaderDesc.mVert.mByteCodeSize = sizeof(gShaderFontstash2DVert);
+		binaryShaderDesc.mVert.pByteCode = (char*)gShaderFontstash2DVert;
+		binaryShaderDesc.mVert.pEntryPoint = "main";
+		binaryShaderDesc.mFrag.mByteCodeSize = sizeof(gShaderFontstashFrag);
+		binaryShaderDesc.mFrag.pByteCode = (char*)gShaderFontstashFrag;
+		binaryShaderDesc.mFrag.pEntryPoint = "main";
+		addShaderBinary(pRenderer, &binaryShaderDesc, &pShaders[0]);
+		binaryShaderDesc.mVert.mByteCodeSize = sizeof(gShaderFontstash3DVert);
+		binaryShaderDesc.mVert.pByteCode = (char*)gShaderFontstash3DVert;
+		binaryShaderDesc.mVert.pEntryPoint = "main";
+		addShaderBinary(pRenderer, &binaryShaderDesc, &pShaders[1]);
+#else
+		ShaderLoadDesc text2DShaderDesc = {};
+		text2DShaderDesc.mStages[0] = { "fontstash2D.vert", NULL, 0, NULL };
+		text2DShaderDesc.mStages[1] = { "fontstash.frag", NULL, 0, NULL};
+		ShaderLoadDesc text3DShaderDesc = {};
+		text3DShaderDesc.mStages[0] = { "fontstash3D.vert", NULL, 0, NULL };
+		text3DShaderDesc.mStages[1] = { "fontstash.frag", NULL, 0, NULL };
+
+		addShader(pRenderer, &text2DShaderDesc, &pShaders[0]);
+		addShader(pRenderer, &text3DShaderDesc, &pShaders[1]);
+#endif
+
+		RootSignatureDesc textureRootDesc = { pShaders, 2 };
+		const char* pStaticSamplers[] = { "uSampler0" };
+		textureRootDesc.mStaticSamplerCount = 1;
+		textureRootDesc.ppStaticSamplerNames = pStaticSamplers;
+		textureRootDesc.ppStaticSamplers = &pDefaultSampler;
+		addRootSignature(pRenderer, &textureRootDesc, &pRootSignature);
+
+		addUniformGPURingBuffer(pRenderer, 65536, &pUniformRingBuffer, true);
+
+		uint64_t size = sizeof(mat4);
+		DescriptorSetDesc setDesc = { pRootSignature, DESCRIPTOR_UPDATE_FREQ_NONE, 2 };
+		addDescriptorSet(pRenderer, &setDesc, &pDescriptorSets);
+		DescriptorData setParams[2] = {};
+		setParams[0].pName = "uniformBlock_rootcbv";
+		setParams[0].ppBuffers = &pUniformRingBuffer->pBuffer;
+		setParams[0].pSizes = &size;
+		setParams[1].pName = "uTex0";
+		setParams[1].ppTextures = &pCurrentTexture;
+		updateDescriptorSet(pRenderer, 0, pDescriptorSets, 2, setParams);
+		updateDescriptorSet(pRenderer, 1, pDescriptorSets, 2, setParams);
+
+		BufferDesc vbDesc = {};
+		vbDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
+		vbDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_CPU_TO_GPU;
+		vbDesc.mSize = ringSizeBytes;
+		vbDesc.mFlags = BUFFER_CREATION_FLAG_PERSISTENT_MAP_BIT;
+		addGPURingBuffer(pRenderer, &vbDesc, &pMeshRingBuffer);
+		/************************************************************************/
+		/************************************************************************/
+
+		return true;
+	}
+
+	void exit()
+	{
+		// unload fontstash context
+		fonsDeleteInternal(pContext);
+
+		removeResource(pCurrentTexture);
+
+		// unload font buffers
+		for (unsigned int i = 0; i < (uint32_t)mFontBuffers.size(); i++)
+			tf_free(mFontBuffers[i]);
+
+		removeDescriptorSet(pRenderer, pDescriptorSets);
+		removeRootSignature(pRenderer, pRootSignature);
+
+		for (uint32_t i = 0; i < 2; ++i)
+		{
+			removeShader(pRenderer, pShaders[i]);
+		}
+
+		removeGPURingBuffer(pMeshRingBuffer);
+		removeGPURingBuffer(pUniformRingBuffer);
+		removeSampler(pRenderer, pDefaultSampler);
+	}
+
+	bool load(RenderTarget** pRts, uint32_t count, PipelineCache* pCache)
+	{
+		VertexLayout vertexLayout = {};
+		vertexLayout.mAttribCount = 2;
+		vertexLayout.mAttribs[0].mSemantic = SEMANTIC_POSITION;
+		vertexLayout.mAttribs[0].mFormat = TinyImageFormat_R32G32_SFLOAT;
+		vertexLayout.mAttribs[0].mBinding = 0;
+		vertexLayout.mAttribs[0].mLocation = 0;
+		vertexLayout.mAttribs[0].mOffset = 0;
+
+		vertexLayout.mAttribs[1].mSemantic = SEMANTIC_TEXCOORD0;
+		vertexLayout.mAttribs[1].mFormat = TinyImageFormat_R32G32_SFLOAT;
+		vertexLayout.mAttribs[1].mBinding = 0;
+		vertexLayout.mAttribs[1].mLocation = 1;
+		vertexLayout.mAttribs[1].mOffset = TinyImageFormat_BitSizeOfBlock(vertexLayout.mAttribs[0].mFormat) / 8;
+
 		BlendStateDesc blendStateDesc = {};
 		blendStateDesc.mSrcFactors[0] = BC_SRC_ALPHA;
 		blendStateDesc.mDstFactors[0] = BC_ONE_MINUS_SRC_ALPHA;
@@ -108,135 +213,58 @@ class _Impl_FontStash
 		blendStateDesc.mMasks[0] = ALL;
 		blendStateDesc.mRenderTargetMask = BLEND_STATE_TARGET_ALL;
 		blendStateDesc.mIndependentBlend = false;
-		addBlendState(pRenderer, &blendStateDesc, &pBlendAlpha);
 
-		DepthStateDesc depthStateDesc = {};
-		depthStateDesc.mDepthTest = false;
-		depthStateDesc.mDepthWrite = false;
-		addDepthState(pRenderer, &depthStateDesc, &pDepthStates[0]);
+		DepthStateDesc depthStateDesc[2] = {};
+		depthStateDesc[0].mDepthTest = false;
+		depthStateDesc[0].mDepthWrite = false;
 
-		DepthStateDesc depthStateEnableDesc = {};
-		depthStateEnableDesc.mDepthTest = true;
-		depthStateEnableDesc.mDepthWrite = true;
-		depthStateEnableDesc.mDepthFunc = CMP_LEQUAL;
-		addDepthState(pRenderer, &depthStateEnableDesc, &pDepthStates[1]);
+		depthStateDesc[1].mDepthTest = true;
+		depthStateDesc[1].mDepthWrite = true;
+		depthStateDesc[1].mDepthFunc = CMP_LEQUAL;
 
-		RasterizerStateDesc rasterizerStateDesc = {};
-		rasterizerStateDesc.mCullMode = CULL_MODE_NONE;
-		rasterizerStateDesc.mScissor = true;
-		addRasterizerState(pRenderer, &rasterizerStateDesc, &pRasterizerStates[0]);
+		RasterizerStateDesc rasterizerStateDesc[2] = {};
+		rasterizerStateDesc[0].mCullMode = CULL_MODE_NONE;
+		rasterizerStateDesc[0].mScissor = true;
 
-		RasterizerStateDesc rasterizerStateFrontDesc = {};
-		rasterizerStateFrontDesc.mCullMode = CULL_MODE_BACK;
-		rasterizerStateFrontDesc.mScissor = true;
-		addRasterizerState(pRenderer, &rasterizerStateFrontDesc, &pRasterizerStates[1]);
+		rasterizerStateDesc[1].mCullMode = CULL_MODE_BACK;
+		rasterizerStateDesc[1].mScissor = true;
 
-		ShaderLoadDesc text2DShaderDesc = {};
-		text2DShaderDesc.mStages[0] = { "fontstash2D.vert", NULL, 0, FSR_MIDDLEWARE_TEXT };
-		text2DShaderDesc.mStages[1] = { "fontstash.frag", NULL, 0, FSR_MIDDLEWARE_TEXT };
-		ShaderLoadDesc text3DShaderDesc = {};
-		text3DShaderDesc.mStages[0] = { "fontstash3D.vert", NULL, 0, FSR_MIDDLEWARE_TEXT };
-		text3DShaderDesc.mStages[1] = { "fontstash.frag", NULL, 0, FSR_MIDDLEWARE_TEXT };
-
-		addShader(pRenderer, &text2DShaderDesc, &pShaders[0]);
-		addShader(pRenderer, &text3DShaderDesc, &pShaders[1]);
-
-		RootSignatureDesc textureRootDesc = { pShaders, 2 };
-#if defined(VULKAN)
-		const char* pDynamicUniformBuffers[] = { "uniformBlock" };
-		textureRootDesc.mDynamicUniformBufferCount = 1;
-		textureRootDesc.ppDynamicUniformBufferNames = pDynamicUniformBuffers;
-#endif
-		pRootSignature = NULL;
-		const char* pStaticSamplers[] = { "uSampler0" };
-		textureRootDesc.mStaticSamplerCount = 1;
-		textureRootDesc.ppStaticSamplerNames = pStaticSamplers;
-		textureRootDesc.ppStaticSamplers = &pDefaultSampler;
-		addRootSignature(pRenderer, &textureRootDesc, &pRootSignature);
-
-		DescriptorBinderDesc descriptorBinderDescs[] =
+		PipelineDesc pipelineDesc = {};
+		pipelineDesc.pCache = pCache;
+		pipelineDesc.mType = PIPELINE_TYPE_GRAPHICS;
+		pipelineDesc.mGraphicsDesc.mPrimitiveTopo = PRIMITIVE_TOPO_TRI_LIST;
+		pipelineDesc.mGraphicsDesc.mRenderTargetCount = 1;
+		pipelineDesc.mGraphicsDesc.mSampleCount = SAMPLE_COUNT_1;
+		pipelineDesc.mGraphicsDesc.pBlendState = &blendStateDesc;
+		pipelineDesc.mGraphicsDesc.pRootSignature = pRootSignature;
+		pipelineDesc.mGraphicsDesc.pVertexLayout = &vertexLayout;
+		pipelineDesc.mGraphicsDesc.mRenderTargetCount = 1;
+		pipelineDesc.mGraphicsDesc.mSampleCount = pRts[0]->mSampleCount;
+		pipelineDesc.mGraphicsDesc.mSampleQuality = pRts[0]->mSampleQuality;
+		pipelineDesc.mGraphicsDesc.pColorFormats = &pRts[0]->mFormat;
+		for (uint32_t i = 0; i < min(count, 2U); ++i)
 		{
-			{ pRootSignature }, // 2D
-			{ pRootSignature }  // 3D
-		};
-		addDescriptorBinder(pRenderer, 0, 2, descriptorBinderDescs, &pDescriptorBinder);
+			pipelineDesc.mGraphicsDesc.mDepthStencilFormat = (i > 0) ? pRts[1]->mFormat : TinyImageFormat_UNDEFINED;
+			pipelineDesc.mGraphicsDesc.pShaderProgram = pShaders[i];
+			pipelineDesc.mGraphicsDesc.pDepthState = &depthStateDesc[i];
+			pipelineDesc.mGraphicsDesc.pRasterizerState = &rasterizerStateDesc[i];
+			addPipeline(pRenderer, &pipelineDesc, &pPipelines[i]);
+		}
 
-		addUniformGPURingBuffer(pRenderer, 65536, &pUniformRingBuffer, true);
+		mScaleBias = { 2.0f / (float)pRts[0]->mWidth, -2.0f / (float)pRts[0]->mHeight };
 
-		BufferDesc vbDesc = {};
-		vbDesc.mDescriptors = DESCRIPTOR_TYPE_VERTEX_BUFFER;
-		vbDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_CPU_TO_GPU;
-		vbDesc.mSize = 1024 * 1024 * sizeof(float4);
-		vbDesc.mVertexStride = sizeof(float4);
-		vbDesc.mFlags = BUFFER_CREATION_FLAG_PERSISTENT_MAP_BIT | BUFFER_CREATION_FLAG_OWN_MEMORY_BIT;
-		addGPURingBuffer(pRenderer, &vbDesc, &pMeshRingBuffer);
-
-		mVertexLayout.mAttribCount = 2;
-		mVertexLayout.mAttribs[0].mSemantic = SEMANTIC_POSITION;
-		mVertexLayout.mAttribs[0].mFormat = ImageFormat::RG32F;
-		mVertexLayout.mAttribs[0].mBinding = 0;
-		mVertexLayout.mAttribs[0].mLocation = 0;
-		mVertexLayout.mAttribs[0].mOffset = 0;
-
-		mVertexLayout.mAttribs[1].mSemantic = SEMANTIC_TEXCOORD0;
-		mVertexLayout.mAttribs[1].mFormat = ImageFormat::RG32F;
-		mVertexLayout.mAttribs[1].mBinding = 0;
-		mVertexLayout.mAttribs[1].mLocation = 1;
-		mVertexLayout.mAttribs[1].mOffset = ImageFormat::GetImageFormatStride(ImageFormat::RG32F);
-
-#ifdef FORGE_JHABLE_EDITS_V01
-		mVertexLayout.mAttribs[0].mSemanticType = 0;
-		mVertexLayout.mAttribs[0].mSemanticIndex = 0;
-
-		mVertexLayout.mAttribs[1].mSemanticType = 7;
-		mVertexLayout.mAttribs[1].mSemanticIndex = 0;
-#endif
-
-		mPipelineDesc = {};
-		mPipelineDesc.mType = PIPELINE_TYPE_GRAPHICS;
-		mPipelineDesc.mGraphicsDesc.mPrimitiveTopo = PRIMITIVE_TOPO_TRI_LIST;
-		mPipelineDesc.mGraphicsDesc.mRenderTargetCount = 1;
-		mPipelineDesc.mGraphicsDesc.mSampleCount = SAMPLE_COUNT_1;
-		mPipelineDesc.mGraphicsDesc.pBlendState = pBlendAlpha;
-		mPipelineDesc.mGraphicsDesc.pRootSignature = pRootSignature;
-		mPipelineDesc.mGraphicsDesc.pVertexLayout = &mVertexLayout;
-		/************************************************************************/
-		/************************************************************************/
+		return true;
 	}
 
-	void destroy()
+	void unload()
 	{
-		// unload fontstash context
-		fonsDeleteInternal(pContext);
-
-		mStagingImage.Destroy();
-		removeResource(pCurrentTexture);
-
-		// unload font buffers
-		for (unsigned int i = 0; i < (uint32_t)mFontBuffers.size(); i++)
-			conf_free(mFontBuffers[i]);
-
-		removeDescriptorBinder(pRenderer, pDescriptorBinder);
-		removeRootSignature(pRenderer, pRootSignature);
-
 		for (uint32_t i = 0; i < 2; ++i)
 		{
-			removeShader(pRenderer, pShaders[i]);
-			for (PipelineMap::iterator it = mPipelines[i].begin(); it != mPipelines[i].end(); ++it)
-				removePipeline(pRenderer, it->second);
+			if (pPipelines[i])
+				removePipeline(pRenderer, pPipelines[i]);
 
-			mPipelines[i].clear();
+			pPipelines[i] = {};
 		}
-
-		removeGPURingBuffer(pMeshRingBuffer);
-		removeGPURingBuffer(pUniformRingBuffer);
-		for (uint32_t i = 0; i < 2; ++i)
-		{
-			removeDepthState(pDepthStates[i]);
-			removeRasterizerState(pRasterizerStates[i]);
-		}
-		removeBlendState(pBlendAlpha);
-		removeSampler(pRenderer, pDefaultSampler);
 	}
 
 	static int  fonsImplementationGenerateTexture(void* userPtr, int width, int height);
@@ -244,107 +272,106 @@ class _Impl_FontStash
 	static void fonsImplementationRenderText(void* userPtr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts);
 	static void fonsImplementationRemoveTexture(void* userPtr);
 
-	using PipelineMap = eastl::hash_map<uint64_t, Pipeline*>;
-
 	Renderer*    pRenderer;
 	FONScontext* pContext;
 
-	// #NOTE: Image holds data allocated by fontstash. Does not allocate any data of its own
-	Image    mStagingImage;
-	Texture* pCurrentTexture;
-	bool     mUpdateTexture;
+	const uint8_t* pPixels;
+	Texture*       pCurrentTexture;
+	bool           mUpdateTexture;
 
 	uint32_t mWidth;
 	uint32_t mHeight;
+	float2   mScaleBias;
 
 	eastl::vector<void*>           mFontBuffers;
 	eastl::vector<uint32_t>        mFontBufferSizes;
-	eastl::vector<eastl::string> mFontNames;
+	eastl::vector<eastl::string>   mFontNames;
 
 	mat4 mProjView;
 	mat4 mWorldMat;
 	Cmd* pCmd;
 
-	Shader*        pShaders[2];
-	RootSignature* pRootSignature;
-	DescriptorBinder* pDescriptorBinder;
-	PipelineMap    mPipelines[2];
+	Shader*            pShaders[2];
+	RootSignature*     pRootSignature;
+	DescriptorSet*     pDescriptorSets;
+	Pipeline*          pPipelines[2];
 	/// Default states
-	BlendState*          pBlendAlpha;
-	DepthState*          pDepthStates[2];
-	RasterizerState*     pRasterizerStates[2];
 	Sampler*             pDefaultSampler;
 	GPURingBuffer*       pUniformRingBuffer;
 	GPURingBuffer*       pMeshRingBuffer;
-	VertexLayout         mVertexLayout = {};
-	PipelineDesc		 mPipelineDesc = {};
 	float2               mDpiScale;
 	float                mDpiScaleMin;
 	bool                 mText3D;
 };
 
-Fontstash::Fontstash(Renderer* renderer, int width, int height)
+bool Fontstash::init(Renderer* renderer, uint32_t width, uint32_t height, uint32_t ringSizeBytes)
 {
-	impl = conf_placement_new<_Impl_FontStash>(conf_calloc(1, sizeof(_Impl_FontStash)));
+	impl = tf_placement_new<_Impl_FontStash>(tf_calloc(1, sizeof(_Impl_FontStash)));
 	impl->mDpiScale = getDpiScale();
 	impl->mDpiScaleMin = min(impl->mDpiScale.x, impl->mDpiScale.y);
 
 	width = width * (int)ceilf(impl->mDpiScale.x);
 	height = height * (int)ceilf(impl->mDpiScale.y);
 
-	impl->init(renderer, width, height);
+	bool success = impl->init(renderer, width, height, ringSizeBytes);
 	m_fFontMaxSize = min(width, height) / 10.0f;    // see fontstash.h, line 1271, for fontSize calculation
+
+	return success;
 }
 
-void Fontstash::destroy()
+void Fontstash::exit()
 {
-	impl->destroy();
+	impl->exit();
 	impl->~_Impl_FontStash();
-	conf_free(impl);
+	tf_free(impl);
 }
 
-int Fontstash::defineFont(const char* identification, const char* filename, uint32_t root)
+bool Fontstash::load(RenderTarget** pRts, uint32_t count, PipelineCache* pCache)
 {
-	FONScontext* fs = impl->pContext;
-
-	File file = File();
-	file.Open(filename, FileMode::FM_ReadBinary, (FSRoot)root);
-	unsigned bytes = file.GetSize();
-	void*    buffer = conf_malloc(bytes);
-	file.Read(buffer, bytes);
-
-	// add buffer to font buffers for cleanup
-	impl->mFontBuffers.emplace_back(buffer);
-	impl->mFontBufferSizes.emplace_back(bytes);
-	impl->mFontNames.emplace_back(file.GetName());
-
-	file.Close();
-
-	return fonsAddFontMem(fs, identification, (unsigned char*)buffer, (int)bytes, 0);
+	return impl->load(pRts, count, pCache);
 }
 
-int Fontstash::getFontID(const char* identification)
+void Fontstash::unload()
 {
-	FONScontext* fs = impl->pContext;
-	return fonsGetFontByName(fs, identification);
+	impl->unload();
 }
 
-const char* Fontstash::getFontName(const char* identification)
+int Fontstash::defineFont(const char* identification, const char* pFontPath)
 {
 	FONScontext* fs = impl->pContext;
-	return impl->mFontNames[fonsGetFontByName(fs, identification)].c_str();
+	
+	FileStream fh = {};
+	if (fsOpenStreamFromPath(RD_FONTS, pFontPath, FM_READ_BINARY, &fh))
+	{
+		ssize_t bytes = fsGetStreamFileSize(&fh);
+		void*    buffer = tf_malloc(bytes);
+		fsReadFromStream(&fh, buffer, bytes);
+
+		// add buffer to font buffers for cleanup
+		impl->mFontBuffers.emplace_back(buffer);
+		impl->mFontBufferSizes.emplace_back((uint32_t)bytes);
+		impl->mFontNames.emplace_back(pFontPath);
+
+		fsCloseStream(&fh);
+
+		return fonsAddFontMem(fs, identification, (unsigned char*)buffer, (int)bytes, 0);
+	}
+
+	return INT32_MAX;
 }
 
-void* Fontstash::getFontBuffer(const char* identification)
+void* Fontstash::getFontBuffer(uint32_t index)
 {
-	FONScontext* fs = impl->pContext;
-	return impl->mFontBuffers[fonsGetFontByName(fs, identification)];
+	if (index < impl->mFontBuffers.size())
+		return impl->mFontBuffers[index];
+	return NULL;
 }
 
-uint32_t Fontstash::getFontBufferSize(const char* identification)
+uint32_t Fontstash::getFontBufferSize(uint32_t index)
 {
-	FONScontext* fs = impl->pContext;
-	return impl->mFontBufferSizes[fonsGetFontByName(fs, identification)];
+	if (index < impl->mFontBufferSizes.size())
+		return impl->mFontBufferSizes[index];
+	return UINT_MAX;
 }
 
 void Fontstash::drawText(
@@ -439,9 +466,7 @@ void _Impl_FontStash::fonsImplementationModifyTexture(void* userPtr, int* rect, 
 
 	_Impl_FontStash* ctx = (_Impl_FontStash*)userPtr;
 
-	ctx->mStagingImage.RedefineDimensions(ImageFormat::R8, ctx->mWidth, ctx->mHeight, 1, 1, 1);
-	ctx->mStagingImage.SetPixels((uint8_t*)data);
-
+	ctx->pPixels = data;
 	ctx->mUpdateTexture = true;
 }
 
@@ -449,34 +474,37 @@ void _Impl_FontStash::fonsImplementationRenderText(
 	void* userPtr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts)
 {
 	_Impl_FontStash* ctx = (_Impl_FontStash*)userPtr;
-	if (ctx->pCurrentTexture == NULL)
+	if (!ctx->pCurrentTexture)
 		return;
 
 	Cmd* pCmd = ctx->pCmd;
 
 	if (ctx->mUpdateTexture)
 	{
-		waitQueueIdle(pCmd->pCmdPool->pQueue);
+		// #TODO: Investigate - Causes hang on low-mid end Android phones (tested on Samsung Galaxy A50s)
+#ifndef __ANDROID__
+		waitQueueIdle(pCmd->pQueue);
+#endif
 
-		RawImageData rawData;
-		rawData.pRawData = ctx->mStagingImage.GetPixels();
-		rawData.mFormat = ctx->mStagingImage.getFormat();
-		rawData.mWidth = ctx->mStagingImage.GetWidth();
-		rawData.mHeight = ctx->mStagingImage.GetHeight();
-		rawData.mDepth = ctx->mStagingImage.GetDepth();
-		rawData.mArraySize = ctx->mStagingImage.GetArrayCount();
-		rawData.mMipLevels = ctx->mStagingImage.GetMipMapCount();
-
+		SyncToken token = {};
 		TextureUpdateDesc updateDesc = {};
 		updateDesc.pTexture = ctx->pCurrentTexture;
-		updateDesc.pRawImageData = &rawData;
-		updateResource(&updateDesc);
+		beginUpdateResource(&updateDesc);
+		for (uint32_t r = 0; r < updateDesc.mRowCount; ++r)
+		{
+			memcpy(updateDesc.pMappedData + r * updateDesc.mDstRowStride,
+				ctx->pPixels + r * updateDesc.mSrcRowStride, updateDesc.mSrcRowStride);
+		}
+		endUpdateResource(&updateDesc, &token);
+		waitForToken(&token);
 
 		ctx->mUpdateTexture = false;
 	}
 
-	float4* vtx = (float4*)alloca(nverts * sizeof(float4));
-
+	GPURingBufferOffset buffer = getGPURingBufferOffset(ctx->pMeshRingBuffer, nverts * sizeof(float4));
+	BufferUpdateDesc update = { buffer.pBuffer, buffer.mOffset };
+	beginUpdateResource(&update);
+	float4* vtx = (float4*)update.pMappedData;
 	// build vertices
 	for (int impl = 0; impl < nverts; impl++)
 	{
@@ -485,39 +513,17 @@ void _Impl_FontStash::fonsImplementationRenderText(
 		vtx[impl].setZ(tcoords[impl * 2 + 0]);
 		vtx[impl].setW(tcoords[impl * 2 + 1]);
 	}
-
-	GPURingBufferOffset buffer = getGPURingBufferOffset(ctx->pMeshRingBuffer, nverts * sizeof(float4));
-	BufferUpdateDesc update = { buffer.pBuffer, vtx, 0, buffer.mOffset, nverts * sizeof(float4) };
-	updateResource(&update);
+	endUpdateResource(&update, NULL);
 
 	// extract color
-	ubyte* colorByte = (ubyte*)colors;
+	uint8_t* colorByte = (uint8_t*)colors;
 	float4 color;
 	for (int i = 0; i < 4; i++)
 		color[i] = ((float)colorByte[i]) / 255.0f;
 
-	Pipeline*                              pPipeline = NULL;
 	uint32_t                               pipelineIndex = ctx->mText3D ? 1 : 0;
-	_Impl_FontStash::PipelineMap::iterator it = ctx->mPipelines[pipelineIndex].find(pCmd->mRenderPassHash);
-	if (it == ctx->mPipelines[pipelineIndex].end())
-	{
-		GraphicsPipelineDesc& pipelineDesc = ctx->mPipelineDesc.mGraphicsDesc;
-		pipelineDesc.mDepthStencilFormat = (ImageFormat::Enum)pCmd->mBoundDepthStencilFormat;
-		pipelineDesc.mRenderTargetCount = pCmd->mBoundRenderTargetCount;
-		pipelineDesc.mSampleCount = pCmd->mBoundSampleCount;
-		pipelineDesc.mSampleQuality = pCmd->mBoundSampleQuality;
-		pipelineDesc.pColorFormats = (ImageFormat::Enum*)pCmd->pBoundColorFormats;
-		pipelineDesc.pDepthState = ctx->pDepthStates[pipelineIndex];
-		pipelineDesc.pRasterizerState = ctx->pRasterizerStates[pipelineIndex];
-		pipelineDesc.pSrgbValues = pCmd->pBoundSrgbValues;
-		pipelineDesc.pShaderProgram = ctx->pShaders[pipelineIndex];
-		addPipeline(pCmd->pRenderer, &ctx->mPipelineDesc, &pPipeline);
-		ctx->mPipelines[pipelineIndex].insert({ pCmd->mRenderPassHash, pPipeline });
-	}
-	else
-	{
-		pPipeline = it->second;
-	}
+	Pipeline*                              pPipeline = ctx->pPipelines[pipelineIndex];
+	ASSERT(pPipeline);
 
 	cmdBindPipeline(pCmd, pPipeline);
 
@@ -528,7 +534,7 @@ void _Impl_FontStash::fonsImplementationRenderText(
 	} data;
 
 	data.color = color;
-	data.scaleBias = { 2.0f / (float)pCmd->mBoundWidth, -2.0f / (float)pCmd->mBoundHeight };
+	data.scaleBias = ctx->mScaleBias;
 
 	if (ctx->mText3D)
 	{
@@ -538,33 +544,31 @@ void _Impl_FontStash::fonsImplementationRenderText(
 
 		GPURingBufferOffset uniformBlock = {};
 		uniformBlock = getGPURingBufferOffset(ctx->pUniformRingBuffer, sizeof(mvp));
-		BufferUpdateDesc updateDesc = { uniformBlock.pBuffer, &mvp, 0, uniformBlock.mOffset, sizeof(mvp) };
-		updateResource(&updateDesc);
+		BufferUpdateDesc updateDesc = { uniformBlock.pBuffer, uniformBlock.mOffset };
+		beginUpdateResource(&updateDesc);
+		*((mat4*)updateDesc.pMappedData) = mvp;
+		endUpdateResource(&updateDesc, NULL);
 
-		uint64_t size = sizeof(mvp);
+		const uint64_t size = sizeof(mvp);
+		const uint32_t stride = sizeof(float4);
 
-		DescriptorData params[3] = {};
-		params[0].pName = "uRootConstants";
-		params[0].pRootConstant = &data;
-		params[1].pName = "uniformBlock";
-		params[1].ppBuffers = &uniformBlock.pBuffer;
-		params[1].pOffsets = &uniformBlock.mOffset;
-		params[1].pSizes = &size;
-		params[2].pName = "uTex0";
-		params[2].ppTextures = &ctx->pCurrentTexture;
-		cmdBindDescriptors(pCmd, ctx->pDescriptorBinder, ctx->pRootSignature, 3, params);
-		cmdBindVertexBuffer(pCmd, 1, &buffer.pBuffer, &buffer.mOffset);
+		DescriptorData params[1] = {};
+		params[0].pName = "uniformBlock_rootcbv";
+		params[0].ppBuffers = &uniformBlock.pBuffer;
+		params[0].pOffsets = &uniformBlock.mOffset;
+		params[0].pSizes = &size;
+		updateDescriptorSet(ctx->pRenderer, pipelineIndex, ctx->pDescriptorSets, 1, params);
+		cmdBindDescriptorSet(pCmd, pipelineIndex, ctx->pDescriptorSets);
+		cmdBindPushConstants(pCmd, ctx->pRootSignature, "uRootConstants", &data);
+		cmdBindVertexBuffer(pCmd, 1, &buffer.pBuffer, &stride, &buffer.mOffset);
 		cmdDraw(pCmd, nverts, 0);
 	}
 	else
 	{
-		DescriptorData params[2] = {};
-		params[0].pName = "uRootConstants";
-		params[0].pRootConstant = &data;
-		params[1].pName = "uTex0";
-		params[1].ppTextures = &ctx->pCurrentTexture;
-		cmdBindDescriptors(pCmd, ctx->pDescriptorBinder, ctx->pRootSignature, 2, params);
-		cmdBindVertexBuffer(pCmd, 1, &buffer.pBuffer, &buffer.mOffset);
+		const uint32_t stride = sizeof(float4);
+		cmdBindDescriptorSet(pCmd, pipelineIndex, ctx->pDescriptorSets);
+		cmdBindPushConstants(pCmd, ctx->pRootSignature, "uRootConstants", &data);
+		cmdBindVertexBuffer(pCmd, 1, &buffer.pBuffer, &stride, &buffer.mOffset);
 		cmdDraw(pCmd, nverts, 0);
 	}
 }

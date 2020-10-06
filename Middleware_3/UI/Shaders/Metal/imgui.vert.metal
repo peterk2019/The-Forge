@@ -34,16 +34,15 @@ constant Uniforms_uniformBlockVS & uniformBlockVS) :
 uniformBlockVS(uniformBlockVS) {}
 };
 
-
 vertex Vertex_Shader::PS_INPUT stageMain(
-    Vertex_Shader::VS_INPUT input [[stage_in]],
-    constant Vertex_Shader::Uniforms_uniformBlockVS & uniformBlockVS [[buffer(1)]])
+    Vertex_Shader::VS_INPUT input  [[stage_in]],
+    constant Vertex_Shader::Uniforms_uniformBlockVS& uniformBlockVS [[buffer(0)]]
+)
 {
     Vertex_Shader::VS_INPUT input0;
     input0.pos = input.pos;
     input0.uv = input.uv;
     input0.col = input.col;
-    Vertex_Shader main(
-    uniformBlockVS);
+    Vertex_Shader main(uniformBlockVS);
     return main.main(input0);
 }

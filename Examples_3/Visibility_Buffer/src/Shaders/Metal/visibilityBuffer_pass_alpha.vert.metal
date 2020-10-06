@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of TheForge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -28,14 +28,7 @@
 using namespace metal;
 
 #include "shader_defs.h"
-
-struct PackedVertexPosData {
-    packed_float3 position;
-};
-
-struct PackedVertexTexcoord {
-    packed_float2 texCoord;
-};
+#include "packing.h"
 
 struct VSOutput {
 	float4 position [[position]];
@@ -56,38 +49,24 @@ struct IndirectDrawArguments
     uint startInstance;
 };
 
-// Vertex shader
-vertex VSOutput stageMain(uint vertexId                                    [[vertex_id]],
-                          constant PackedVertexPosData* vertexPos          [[buffer(0)]],
-                          constant PackedVertexTexcoord* vertexTexcoord    [[buffer(1)]],
-                          constant PerBatchUniforms& perBatch              [[buffer(2)]],
-                          constant PerFrameConstants& uniforms             [[buffer(3)]],
-                          constant uint* filteredTriangles                 [[buffer(4)]],
-                          constant IndirectDrawArguments* indirectDrawArgs [[buffer(5)]])
+struct VSInput
 {
-    // Get the indirect draw arguments data for this batch
-    IndirectDrawArguments batchData = indirectDrawArgs[perBatch.drawId];
-    
-    // Calculate the current triangleID from vertexId
-    uint startTriangle = indirectDrawArgs[perBatch.drawId].startVertex / 3;
-    uint vertexInBatch = vertexId - batchData.startVertex;
-    uint triangleInBatch = vertexInBatch/3;
-    
-    // Load the triangleId from the filteredTriangles buffer which contains all triangles that passed the culling tests
-    uint triangleId = filteredTriangles[startTriangle + triangleInBatch];
-    
-    // Calculate global vertexId
-    uint vertInTri = vertexInBatch % 3;
-    uint vId = batchData.startVertex + triangleId*3 + vertInTri;
-    
-    // Load vertex data from vertex bfufer using global vertexId
-    PackedVertexPosData vertPos = vertexPos[vId];
-    PackedVertexTexcoord vertTexcoord = vertexTexcoord[vId];
-    
-    // Output data to the pixel shader
+	float4 Position [[attribute(0)]];
+	uint TexCoord [[attribute(1)]];
+};
+
+struct VSData {
+    constant PerFrameConstants& uniforms;
+};
+
+// Vertex shader
+vertex VSOutput stageMain(
+    VSInput input                        [[stage_in]],
+    constant PerFrameConstants& uniforms [[buffer(UNIT_VBPASS_UNIFORMS)]]
+)
+{
 	VSOutput result;
-    result.position = uniforms.transform[VIEW_CAMERA].mvp * float4(vertPos.position, 1.0f);
-    result.texCoord = vertTexcoord.texCoord;
-    result.triangleID = triangleId;
+	result.position = uniforms.transform[VIEW_CAMERA].mvp * input.Position;
+	result.texCoord = unpack2Floats(input.TexCoord);
 	return result;
 }

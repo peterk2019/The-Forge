@@ -30,23 +30,23 @@
 
 #include <set>
 
-#include "ozz/base/containers/std_allocator.h"
+#include "../../EASTL/set.h"
 
 namespace ozz {
 // Redirects std::set to ozz::Set in order to replace std default allocator by
 // ozz::StdAllocator.
-template <class _Key, class _Pred = std::less<_Key>,
-          class _Allocator = ozz::StdAllocator<_Key> >
+template <class _Key, class _Pred = eastl::less<_Key>,
+          class _Allocator = EASTLAllocatorType<_Key> >
 struct Set {
-  typedef std::set<_Key, _Pred, _Allocator> Std;
+  typedef eastl::set<_Key, _Pred, _Allocator> Std;
 };
 
 // Redirects std::multiset to ozz::MultiSet in order to replace std default
 // allocator by ozz::StdAllocator.
-template <class _Key, class _Pred = std::less<_Key>,
-          class _Allocator = ozz::StdAllocator<_Key> >
+template <class _Key, class _Pred = eastl::less<_Key>,
+          class _Allocator = EASTLAllocatorType<_Key> >
 struct MultiSet {
-  typedef std::multiset<_Key, _Pred, _Allocator> Std;
+  typedef eastl::multiset<_Key, _Pred, _Allocator> Std;
 };
 }  // namespace ozz
 #endif  // OZZ_OZZ_BASE_CONTAINERS_SET_H_

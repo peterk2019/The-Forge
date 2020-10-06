@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -52,18 +52,16 @@ struct Fragment_Shader
 	uTexture0(uTexture0),uSampler0(uSampler0) {}
 };
 
-
 fragment float4 stageMain(
 						  Fragment_Shader::VSOutput input [[stage_in]],
-						  texture2d<float> uTexture0 [[texture(0)]],
-						  sampler uSampler0 [[sampler(0)]])
+						  texture2d<float> uTexture0      [[texture(0)]],
+						  sampler uSampler0               [[sampler(0)]]
+)
 {
 	Fragment_Shader::VSOutput input0;
 	input0.pos = float4(input.pos.xyz, 1.0 / input.pos.w);
 	input0.color = input.color;
 	input0.uv = input.uv;
-	Fragment_Shader main(
-						 uTexture0,
-						 uSampler0);
+	Fragment_Shader main(uTexture0, uSampler0);
 	return main.main(input0);
 }

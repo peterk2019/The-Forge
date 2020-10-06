@@ -23,7 +23,7 @@ freely, subject to the following restrictions:
 */
 
 #include "soloud.h"
-#include "../../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../../OS/Interfaces/IMemory.h"
 
 // Direct voice operations (no mutexes - called from other functions)
 
@@ -124,7 +124,7 @@ namespace SoLoud
 			// Delete via temporary variable to avoid recursion
 			AudioSourceInstance * v = mVoice[aVoice];
 			mVoice[aVoice] = 0;
-			conf_delete(v);
+			tf_delete(v);
 
 			unsigned int i;
 			for (i = 0; i < mMaxActiveVoices; i++)

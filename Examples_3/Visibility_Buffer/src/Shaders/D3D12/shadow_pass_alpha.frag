@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  * 
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -25,10 +25,6 @@
 #include "packing.h"
 #include "shader_defs.h"
 
-#ifndef CONF_EARLY_DEPTH_STENCIL
-#define CONF_EARLY_DEPTH_STENCIL
-#endif
-
 struct PsInAlphaTested
 {
 	float4 position : SV_Position;
@@ -37,13 +33,12 @@ struct PsInAlphaTested
 
 ConstantBuffer<RootConstant> indirectRootConstant : register(b1);
 
-StructuredBuffer<uint> indirectMaterialBuffer : register(t0);
+StructuredBuffer<uint> indirectMaterialBuffer : register(t0, UPDATE_FREQ_PER_FRAME);
 Texture2D diffuseMaps[] : register(t1);
 SamplerState textureFilter : register(s0);
 
 #define __XBOX_FORCE_PS_ZORDER_EARLY_Z_THEN_RE_Z
 
-CONF_EARLY_DEPTH_STENCIL
 void main(PsInAlphaTested In)
 {
     uint matBaseSlot = BaseMaterialBuffer(true, 0); //1 is camera view, 0 is shadow map view

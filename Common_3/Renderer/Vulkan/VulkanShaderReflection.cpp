@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -27,13 +27,13 @@
 #include "../IRenderer.h"
 
 #include "../../Tools/SpirvTools/SpirvTools.h"
-#include "../../OS/Interfaces/ILogManager.h"
-#include "../../OS/Interfaces/IMemoryManager.h"
+#include "../../OS/Interfaces/ILog.h"
+#include "../../OS/Interfaces/IMemory.h"
 
 static DescriptorType sSPIRV_TO_DESCRIPTOR[SPIRV_TYPE_COUNT] = {
 	DESCRIPTOR_TYPE_UNDEFINED,        DESCRIPTOR_TYPE_UNDEFINED,    DESCRIPTOR_TYPE_UNIFORM_BUFFER,  DESCRIPTOR_TYPE_RW_BUFFER,
 	DESCRIPTOR_TYPE_TEXTURE,          DESCRIPTOR_TYPE_RW_TEXTURE,   DESCRIPTOR_TYPE_SAMPLER,         DESCRIPTOR_TYPE_ROOT_CONSTANT,
-	DESCRIPTOR_TYPE_INPUT_ATTACHMENT, DESCRIPTOR_TYPE_TEXEL_BUFFER, DESCRIPTOR_TYPE_RW_TEXEL_BUFFER,
+	DESCRIPTOR_TYPE_INPUT_ATTACHMENT, DESCRIPTOR_TYPE_TEXEL_BUFFER, DESCRIPTOR_TYPE_RW_TEXEL_BUFFER, DESCRIPTOR_TYPE_RAY_TRACING,
 };
 
 static TextureDimension sSPIRV_TO_RESOURCE_DIM[SPIRV_DIM_COUNT] = {
@@ -63,9 +63,6 @@ bool filterResouce(SPIRV_Resource* resource, ShaderStage currentStage)
 
 	// remove stage inputs that are not on the vertex shader
 	filter = filter || (resource->type == SPIRV_Resource_Type::SPIRV_TYPE_STAGE_INPUTS && currentStage != SHADER_STAGE_VERT);
-
-	// we support push constants
-	//filter = filter || (resource->type == SPIRV_Resource_Type::SPIRV_TYPE_PUSH_CONSTANT);
 
 	return filter;
 }
@@ -144,7 +141,7 @@ void vk_createShaderReflection(const uint8_t* shaderCode, uint32_t shaderSize, S
 	// we now have the size of the memory pool and number of resources
 	char* namePool = NULL;
 	if (namePoolSize)
-		namePool = (char*)conf_calloc(namePoolSize, 1);
+		namePool = (char*)tf_calloc(namePoolSize, 1);
 	char* pCurrentName = namePool;
 
 	pOutReflection->pEntryPoint = pCurrentName;
@@ -155,7 +152,7 @@ void vk_createShaderReflection(const uint8_t* shaderCode, uint32_t shaderSize, S
 	// start with the vertex input
 	if (shaderStage == SHADER_STAGE_VERT && vertexInputCount > 0)
 	{
-		pVertexInputs = (VertexInput*)conf_malloc(sizeof(VertexInput) * vertexInputCount);
+		pVertexInputs = (VertexInput*)tf_malloc(sizeof(VertexInput) * vertexInputCount);
 
 		uint32_t j = 0;
 		for (uint32_t i = 0; i < cc.ShaderResourceCount; ++i)
@@ -181,8 +178,8 @@ void vk_createShaderReflection(const uint8_t* shaderCode, uint32_t shaderSize, S
 	// continue with resources
 	if (resouceCount)
 	{
-		indexRemap = (uint32_t*)conf_malloc(sizeof(uint32_t) * cc.ShaderResourceCount);
-		pResources = (ShaderResource*)conf_malloc(sizeof(ShaderResource) * resouceCount);
+		indexRemap = (uint32_t*)tf_malloc(sizeof(uint32_t) * cc.ShaderResourceCount);
+		pResources = (ShaderResource*)tf_malloc(sizeof(ShaderResource) * resouceCount);
 
 		uint32_t j = 0;
 		for (uint32_t i = 0; i < cc.ShaderResourceCount; ++i)
@@ -219,7 +216,7 @@ void vk_createShaderReflection(const uint8_t* shaderCode, uint32_t shaderSize, S
 	// now do variables
 	if (variablesCount)
 	{
-		pVariables = (ShaderVariable*)conf_malloc(sizeof(ShaderVariable) * variablesCount);
+		pVariables = (ShaderVariable*)tf_malloc(sizeof(ShaderVariable) * variablesCount);
 
 		uint32_t j = 0;
 		for (uint32_t i = 0; i < cc.UniformVariablesCount; ++i)
@@ -246,7 +243,7 @@ void vk_createShaderReflection(const uint8_t* shaderCode, uint32_t shaderSize, S
 		}
 	}
 
-	conf_free(indexRemap);
+	tf_free(indexRemap);
 	DestroyCrossCompiler(&cc);
 
 	// all refection structs should be built now

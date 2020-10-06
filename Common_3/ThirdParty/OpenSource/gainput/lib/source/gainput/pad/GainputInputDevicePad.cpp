@@ -18,7 +18,15 @@
 #elif defined(GAINPUT_PLATFORM_ANDROID)
 	#include "GainputInputDevicePadAndroid.h" 
 #elif defined (GAINPUT_PLATFORM_XBOX_ONE)
-	#include "../../../../../../../../Xbox/CommonXBOXOne_3/Input/GainputInputDevicePadXboxOne.h"
+	#include "../../../../../../../../Xbox/Common_3/OS/Input/GainputInputDevicePadXboxOne.h"
+#elif defined(GAINPUT_PLATFORM_NX64)
+#include "../../../../../../../../Switch/Common_3/OS/Input/GainputInputDevicePadNX.h"
+#elif defined(GAINPUT_PLATFORM_GGP)
+	#include "../../../../../../../../Stadia/Common_3/OS/Input/GainputInputDevicePadGGP.h"
+#elif defined(GAINPUT_PLATFORM_ORBIS)
+#include "../../../../../../../../PS4/Common_3/OS/Input/GainputInputDevicePadOrbis.h"
+#elif defined(GAINPUT_PLATFORM_PROSPERO)
+#include "../../../../../../../../Prospero/Common_3/OS/Input/GainputInputDevicePadProspero.h"
 #endif
 
 #include "GainputInputDevicePadNull.h"
@@ -141,6 +149,14 @@ InputDevicePad::InputDevicePad(InputManager& manager, DeviceId device, unsigned 
 	impl_ = manager.GetAllocator().New<InputDevicePadImplAndroid>(manager, *this, index_, *state_, *previousState_);
 #elif defined(GAINPUT_PLATFORM_XBOX_ONE)
 	impl_ = manager.GetAllocator().New<InputDevicePadImplXboxOne>(manager, *this, index_, *state_, *previousState_);
+#elif defined(GAINPUT_PLATFORM_NX64)
+	impl_ = manager.GetAllocator().New<InputDevicePadImplNx>(manager, *this, index_, *state_, *previousState_);
+#elif defined(GAINPUT_PLATFORM_GGP)
+	impl_ = manager.GetAllocator().New<InputDevicePadImplGGP>(manager, *this, index_, *state_, *previousState_);
+#elif defined(GAINPUT_PLATFORM_ORBIS)
+	impl_ = manager.GetAllocator().New<InputDevicePadImplOrbis>(manager, *this, index_, *state_, *previousState_);
+#elif defined(GAINPUT_PLATFORM_PROSPERO)
+	impl_ = manager.GetAllocator().New<InputDevicePadImplProspero>(manager, *this, index_, *state_, *previousState_);
 #endif
 
 	if (!impl_)
@@ -280,6 +296,24 @@ bool
 InputDevicePad::Vibrate(float leftMotor, float rightMotor)
 {
 	return impl_->Vibrate(leftMotor, rightMotor);
+}
+
+const char*
+InputDevicePad::GetDeviceName()
+{
+	return impl_->GetDeviceName();
+}
+
+bool
+InputDevicePad::SetRumbleEffect(float left_motor, float right_motor, uint32_t duration_ms)
+{
+	return impl_->SetRumbleEffect(left_motor, right_motor, duration_ms);
+}
+
+
+void InputDevicePad::SetLEDColor(uint8_t r, uint8_t g, uint8_t b)
+{
+	impl_->SetLEDColor(r, g, b);
 }
 
 }

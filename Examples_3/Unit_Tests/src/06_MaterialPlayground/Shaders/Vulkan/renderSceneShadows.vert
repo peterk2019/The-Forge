@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Confetti Interactive Inc.
+ * Copyright (c) 2019 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -26,12 +26,12 @@
 
 layout(location = 0) in vec3 POSITION;
 
-layout(set = 0, binding = 0) uniform cbCamera
+layout(UPDATE_FREQ_PER_FRAME, binding = 0) uniform cbCamera
 {
 	mat4 projView;
 };
 
-layout(set = 2, binding = 1) uniform cbObject
+layout(UPDATE_FREQ_PER_DRAW, binding = 1) uniform cbObject
 {
 	mat4 worldMat;
 };

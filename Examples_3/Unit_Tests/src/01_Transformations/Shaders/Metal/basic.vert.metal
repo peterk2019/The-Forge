@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -54,9 +54,10 @@ struct VSOutput {
     float4 Color;
 };
 
-vertex VSOutput stageMain(VSInput input [[stage_in]],
-                       uint InstanceID [[instance_id]],
-                       constant UniformBlock0& uniformBlock [[buffer(1)]])
+vertex VSOutput stageMain(VSInput input                     [[stage_in]],
+                       uint InstanceID                      [[instance_id]],
+                       constant UniformBlock0& uniformBlock [[buffer(0)]]
+)
 {
     VSOutput result;
     float4x4 tempMat = uniformBlock.mvp * uniformBlock.toWorld[InstanceID];

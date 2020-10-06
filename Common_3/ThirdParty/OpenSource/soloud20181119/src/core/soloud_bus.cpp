@@ -24,7 +24,7 @@ freely, subject to the following restrictions:
 
 #include "soloud.h"
 #include "soloud_fft.h"
-#include "../../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../../OS/Interfaces/IMemory.h"
 
 namespace SoLoud
 {
@@ -133,7 +133,7 @@ namespace SoLoud
 			mChannelHandle = 0;
 			mInstance = 0;
 		}
-		mInstance = conf_new(BusInstance, this);
+		mInstance = tf_new(BusInstance, this);
 		return mInstance;
 	}
 
@@ -230,7 +230,7 @@ namespace SoLoud
 		if (mInstance)
 		{
 			mSoloud->lockAudioMutex();
-			conf_delete(mInstance->mFilter[aFilterId]);
+			tf_delete(mInstance->mFilter[aFilterId]);
 			mInstance->mFilter[aFilterId] = 0;
 		
 			if (aFilter)

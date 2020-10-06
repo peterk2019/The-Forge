@@ -166,6 +166,13 @@
 	#endif
 #endif
 
+//FORGE_EASTL_CHANGES_START
+#if __cplusplus >= 201103L || (defined(_MSC_VER) && _MSC_VER >= 1900)
+	#define EASTL_VARIABLE_TEMPLATES_ENABLED 1
+#else
+	#define EASTL_VARIABLE_TEMPLATES_ENABLED 0
+#endif
+//FORGE_EASTL_CHANGES_END
 
 ///////////////////////////////////////////////////////////////////////////////
 // EASTL namespace
@@ -1274,9 +1281,11 @@ namespace eastl
 //
 #ifndef EASTL_COMPILER_INTRINSIC_TYPE_TRAITS_AVAILABLE
 	#if defined(_MSC_VER) && (_MSC_VER >= 1500) // VS2008 or later
-		#pragma warning(push, 0)
-			#include <yvals.h>
-		#pragma warning(pop)
+		#if !defined(EA_PLATFORM_NX)
+			#pragma warning(push, 0)
+				#include <yvals.h>
+			#pragma warning(pop)
+		#endif
 		#if ((defined(_HAS_TR1) && _HAS_TR1) || _MSC_VER >= 1700)  // VS2012 (1700) and later has built-in type traits support.
 			#define EASTL_COMPILER_INTRINSIC_TYPE_TRAITS_AVAILABLE 1
 		#else

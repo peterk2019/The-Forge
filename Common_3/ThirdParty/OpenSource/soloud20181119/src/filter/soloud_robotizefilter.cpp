@@ -25,7 +25,7 @@ freely, subject to the following restrictions:
 #include <string.h>
 #include "soloud.h"
 #include "soloud_robotizefilter.h"
-#include "../../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../../OS/Interfaces/IMemory.h"
 
 
 namespace SoLoud
@@ -52,6 +52,6 @@ namespace SoLoud
 
 	FilterInstance *RobotizeFilter::createInstance()
 	{
-		return conf_new(RobotizeFilterInstance, this);
+		return tf_new(RobotizeFilterInstance, this);
 	}
 }

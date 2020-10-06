@@ -1,13 +1,13 @@
 #include "LuaManager.h"
 #include "LuaManagerImpl.h"
 
-#include "../../Common_3/OS/Interfaces/ILogManager.h"
-#include "../../Common_3/OS/Interfaces/IMemoryManager.h"
+#include "../../Common_3/OS/Interfaces/ILog.h"
+#include "../../Common_3/OS/Interfaces/IMemory.h"
 
 void LuaManager::Init()
 {
-	m_Impl = (LuaManagerImpl*)conf_calloc(1, sizeof(LuaManagerImpl));
-	conf_placement_new<LuaManagerImpl>(m_Impl);
+	m_Impl = (LuaManagerImpl*)tf_calloc(1, sizeof(LuaManagerImpl));
+	tf_placement_new<LuaManagerImpl>(m_Impl);
 }
 
 void LuaManager::Exit()
@@ -15,7 +15,7 @@ void LuaManager::Exit()
 	if (m_Impl != nullptr)
 	{
 		m_Impl->~LuaManagerImpl();
-		conf_free(m_Impl);
+		tf_free(m_Impl);
 		m_Impl = nullptr;
 	}
 }
@@ -28,34 +28,34 @@ void LuaManager::SetFunction(ILuaFunctionWrap* wrap)
 	m_Impl->SetFunction(wrap);
 }
 
-bool LuaManager::RunScript(const char* scriptname)
+bool LuaManager::RunScript(const char* scriptFile)
 {
 	ASSERT(m_Impl != nullptr);
-	return m_Impl->RunScript(scriptname);
+	return m_Impl->RunScript(scriptFile);
 }
 
-void LuaManager::AddAsyncScript(const char* scriptname, ScriptDoneCallback callback)
+void LuaManager::AddAsyncScript(const char* scriptFile, ScriptDoneCallback callback)
 {
 	ASSERT(m_Impl != nullptr);
-	m_Impl->AddAsyncScript(scriptname, callback);
+	m_Impl->AddAsyncScript(scriptFile, callback);
 }
 
-void LuaManager::AddAsyncScript(const char* scriptname)
+void LuaManager::AddAsyncScript(const char* scriptFile)
 {
 	ASSERT(m_Impl != nullptr);
-	m_Impl->AddAsyncScript(scriptname);
+	m_Impl->AddAsyncScript(scriptFile);
 }
 
-void LuaManager::AddAsyncScript(const char* scriptname, IScriptCallbackWrap* callbackLambda)
+void LuaManager::AddAsyncScript(const char* scriptFile, IScriptCallbackWrap* callbackLambda)
 {
 	ASSERT(m_Impl != nullptr);
-	m_Impl->AddAsyncScript(scriptname, callbackLambda);
+	m_Impl->AddAsyncScript(scriptFile, callbackLambda);
 }
 
-bool LuaManager::SetUpdatableScript(const char* scriptname, const char* updateFunctionName, const char* exitFunctionName)
+bool LuaManager::SetUpdatableScript(const char* scriptFile, const char* updateFunctionName, const char* exitFunctionName)
 {
 	ASSERT(m_Impl != nullptr);
-	return m_Impl->SetUpdatableScript(scriptname, updateFunctionName, exitFunctionName);
+	return m_Impl->SetUpdatableScript(scriptFile, updateFunctionName, exitFunctionName);
 }
 
 bool LuaManager::ReloadUpdatableScript()

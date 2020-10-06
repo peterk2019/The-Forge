@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -22,189 +22,155 @@
  * under the License.
 */
 
-#ifdef __ANDROID__
 #include "../Interfaces/IFileSystem.h"
-#include "../Interfaces/ILogManager.h"
+#include "../Interfaces/ILog.h"
 #include "../Interfaces/IOperatingSystem.h"
+#include <errno.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <sys/inotify.h>
+#include <dirent.h>
 #include <android/asset_manager.h>
-#include "../Interfaces/IMemoryManager.h"
-#define MAX_PATH PATH_MAX
+#include "../Interfaces/IMemory.h"
 
-#define RESOURCE_DIR "Shaders"
+bool UnixOpenFile(ResourceDirectory resourceDir, const char* fileName, FileMode mode, FileStream* pOut);
 
-const char* pszRoots[FSR_Count] = {
-	RESOURCE_DIR "/Binary/",    // FSR_BinShaders
-	RESOURCE_DIR "/",           // FSR_SrcShaders
-	"Textures/",                // FSR_Textures
-	"Meshes/",                  // FSR_Meshes
-	"Fonts/",                   // FSR_Builtin_Fonts
-	"GPUCfg/",                  // FSR_GpuConfig
-	"Animation/",               // FSR_Animation
-	"Audio/",                   // FSR_Audio
-	"",                         // FSR_OtherFiles
-};
-
-static AAssetManager* _mgr = NULL;
-
-FileHandle open_file(const char* filename, const char* flags)
+static size_t  AssetStreamRead(FileStream* pFile, void* outputBuffer, size_t bufferSizeInBytes)
 {
-	// Android does not support write to file. All assets accessed through asset manager are read only.
-	if(strstr(flags, "w") != NULL)
-	{
-		LOGF(LogLevel::eERROR, "Writing to asset file is not supported on android platform!");
-		return NULL;
-	}
-	if(_mgr == NULL)
-		return NULL;
-
-	AAsset* file = AAssetManager_open(_mgr,
-		filename, AASSET_MODE_BUFFER);
-
-	if(file == NULL)
-		return NULL;
-
-	return reinterpret_cast<void*>(file);
+	return AAsset_read(pFile->pAsset, outputBuffer, bufferSizeInBytes);
 }
 
-bool close_file(FileHandle handle)
+static size_t AssetStreamWrite(FileStream* pFile, const void* sourceBuffer, size_t byteCount)
 {
-	AAsset_close(reinterpret_cast<AAsset*>(handle));
+	LOGF(LogLevel::eERROR, "Bundled Android assets are not writable.");
+	return 0;
+}
+
+static bool AssetStreamSeek(FileStream* pFile, SeekBaseOffset baseOffset, ssize_t seekOffset)
+{
+	int origin = SEEK_SET;
+	switch (baseOffset)
+	{
+		case SBO_START_OF_FILE: origin = SEEK_SET; break;
+		case SBO_CURRENT_POSITION: origin = SEEK_CUR; break;
+		case SBO_END_OF_FILE: origin = SEEK_END; break;
+	}
+	return AAsset_seek64(pFile->pAsset, seekOffset, origin) != -1;
+}
+
+static ssize_t AssetStreamGetSeekPosition(const FileStream* pFile)
+{
+	return (ssize_t)AAsset_seek64(pFile->pAsset, 0, SEEK_CUR);
+}
+
+static ssize_t AssetStreamGetSize(const FileStream* pFile)
+{
+	return pFile->mSize;
+}
+
+static bool AssetStreamFlush(FileStream* pFile) 
+{ 
+	return true; 
+}
+
+static bool AssetStreamIsAtEnd(const FileStream* pFile)
+{
+	return AAsset_getRemainingLength64(pFile->pAsset) == 0;
+}
+
+static bool AssetStreamClose(FileStream* pFile)
+{
+	AAsset_close(pFile->pAsset);
 	return true;
 }
 
-bool anDirExists(const char* path)
+static IFileSystem gBundledFileIO =
 {
-	AAssetDir* assetDir = AAssetManager_openDir(_mgr, path );
-	bool exist = AAssetDir_getNextFileName(assetDir) != NULL;
-	AAssetDir_close( assetDir );
-	return exist;
-}
+	NULL,
+	AssetStreamClose,
+	AssetStreamRead,
+	AssetStreamWrite,
+	AssetStreamSeek,
+	AssetStreamGetSeekPosition,
+	AssetStreamGetSize,
+	AssetStreamFlush,
+	AssetStreamIsAtEnd
+};
 
-void get_files_with_extension(const char* dir, const char* ext, eastl::vector<eastl::string>& filesOut)
+static bool gInitialized = false;
+static const char* gResourceMounts[RM_COUNT];
+const char* GetResourceMount(ResourceMount mount) {
+	return gResourceMounts[mount];
+}
+bool fsIsBundledResourceDir(ResourceDirectory resourceDir);
+
+static ANativeActivity* pNativeActivity = NULL;
+static AAssetManager* pAssetManager = NULL;
+
+bool initFileSystem(FileSystemInitDesc* pDesc)
 {
-	AAssetDir* assetDir = AAssetManager_openDir(_mgr, dir);
-	const char* fileName = (const char*)NULL;
-	while ((fileName = AAssetDir_getNextFileName(assetDir)) != NULL) {
-		const char* p = strstr(fileName, ext);
-		if(p)
-		{
-			filesOut.push_back(dir + eastl::string(fileName));
-		}
+	if (gInitialized)
+	{
+		LOGF(LogLevel::eWARNING, "FileSystem already initialized.");
+		return true;
 	}
-	AAssetDir_close(assetDir);
+	ASSERT(pDesc);
+	pSystemFileIO->GetResourceMount = GetResourceMount;
+
+	pNativeActivity = (ANativeActivity*)pDesc->pPlatformData;
+	ASSERT(pNativeActivity);
+
+	pAssetManager = pNativeActivity->assetManager;
+	gResourceMounts[RM_CONTENT] = "\0";
+	gResourceMounts[RM_DEBUG] = pNativeActivity->externalDataPath;
+	gResourceMounts[RM_SAVE_0] = pNativeActivity->internalDataPath;
+
+	// Override Resource mounts
+	for (uint32_t i = 0; i < RM_COUNT; ++i)
+	{
+		if (pDesc->pResourceMounts[i])
+			gResourceMounts[i] = pDesc->pResourceMounts[i];
+	}
+
+	gInitialized = true;
+	return true;
 }
 
-
-void flush_file(FileHandle handle)
+void exitFileSystem()
 {
-	LOGF(LogLevel::eERROR, "FileSystem::Flush not supported on Android!");
-	abort();
+	gInitialized = false;
 }
 
-size_t read_file(void *buffer, size_t byteCount, FileHandle handle)
+bool PlatformOpenFile(ResourceDirectory resourceDir, const char* fileName, FileMode mode, FileStream* pOut)
 {
-	AAsset* assetHandle = reinterpret_cast<AAsset*>(handle);
-	size_t  readSize = AAsset_read(assetHandle, buffer, byteCount);
-	ASSERT(readSize == byteCount);
-	return readSize;
+	const char* resourcePath = fsGetResourceDirectory(resourceDir);
+	char filePath[FS_MAX_PATH] = {};
+	fsAppendPathComponent(resourcePath, fileName, filePath);
+	const char* modeStr = fsFileModeToString(mode);
+
+	if (fsIsBundledResourceDir(resourceDir))
+	{
+		if ((mode & (FM_WRITE | FM_APPEND)) != 0)
+		{
+			LOGF(LogLevel::eERROR, "Cannot open %s with mode %i: the Android bundle is read-only.",
+				filePath, mode);
+			return false;
+		}
+
+		AAsset* file = AAssetManager_open(pAssetManager, filePath, AASSET_MODE_BUFFER);
+		if (!file)
+		{
+			LOGF(LogLevel::eERROR, "Failed to open '%s' with mode %i.", filePath, mode);
+			return false;
+		}
+
+		*pOut = {};
+		pOut->pAsset = file;
+		pOut->mMode = mode;
+		pOut->pIO = &gBundledFileIO;
+		pOut->mSize = (ssize_t)AAsset_getLength64(file);
+		return true;
+	}
+
+	return UnixOpenFile(resourceDir, fileName, mode, pOut);
 }
-
-bool seek_file(FileHandle handle, long offset, int origin)
-{
-	// Seek function return -s on error.
-	return AAsset_seek(reinterpret_cast<AAsset*>(handle), offset, origin) != -1;
-}
-
-long tell_file(FileHandle handle)
-{
-	size_t total_len = AAsset_getLength(reinterpret_cast<AAsset*>(handle));
-	size_t remain_len = AAsset_getRemainingLength(reinterpret_cast<AAsset*>(handle));
-	return total_len - remain_len;
-	//AAsset_getLength(reinterpret_cast<AAsset*>(handle));
-}
-
-size_t write_file(const void *buffer, size_t byteCount, FileHandle handle)
-{
-	//It cannot be done.It is impossible.
-	//https://stackoverflow.com/questions/3760626/how-to-write-files-to-assets-folder-or-raw-folder-in-android
-	LOGF(LogLevel::eERROR, "FileSystem::Write not supported in Android!");
-	abort();
-	return -1;
-}
-
-time_t get_file_last_modified_time(const char* _fileName)
-{
-	LOGF(LogLevel::eERROR,"FileSystem::Last Modified Time not supported in Android!");
-	return -1;
-}
-
-time_t get_file_last_accessed_time(const char* _fileName)
-{
-	LOGF(LogLevel::eERROR,"FileSystem::Last Modified Time not supported in Android!");
-	return -1;
-}
-
-time_t get_file_creation_time(const char* _fileName)
-{
-	LOGF(LogLevel::eERROR, "FileSystem::Last Modified Time not supported in Android!");
-	return -1;
-}
-
-eastl::string get_current_dir()
-{
-	return eastl::string ("");
-}
-
-eastl::string get_exe_path()
-{
-	char exeName[MAX_PATH];
-	exeName[0] = 0;
-	readlink("/proc/self/exe", exeName, MAX_PATH);
-	return eastl::string(exeName);
-}
-
-eastl::string get_app_prefs_dir(const char *org, const char *app)
-{
-	return "";
-}
-
-eastl::string get_user_documents_dir()
-{
-	return "";
-}
-
-void set_current_dir(const char* path)
-{
-	// change working directory
-	chdir(path);
-}
-
-bool copy_file(const char* src, const char* dst)
-{
-	LOGF(LogLevel::eERROR, "Not supported in Android!");
-	return false;
-}
-
-void open_file_dialog(
-	const char* title, const char* dir, FileDialogCallbackFn callback, void* userData, const char* fileDesc,
-	const eastl::vector<eastl::string>& fileExtensions)
-{
-	LOGF(LogLevel::eERROR, "Not supported in Android!");
-}
-
-void save_file_dialog(
-	const char* title, const char* dir, FileDialogCallbackFn callback, void* userData, const char* fileDesc,
-	const eastl::vector<eastl::string>& fileExtensions)
-{
-	LOGF(LogLevel::eERROR, "Not supported in Android!");
-}
-
-FileSystem::Watcher::Watcher(const char* pWatchPath, FSRoot root, uint32_t eventMask, Callback callback)
-{
-	LOGF(LogLevel::eERROR,"Not supported in Android!");
-}
-
-FileSystem::Watcher::~Watcher() { LOGF(LogLevel::eERROR,"Not supported in Android!"); }
-
-#endif

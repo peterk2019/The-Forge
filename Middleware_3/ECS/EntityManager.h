@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../Common_3/OS/Interfaces/ILogManager.h"
+#include "../../Common_3/OS/Interfaces/ILog.h"
 #include "../../Common_3/OS/Interfaces/IThread.h"
 
 #include "../../Common_3/ThirdParty/OpenSource/EASTL/string.h"
@@ -52,9 +52,6 @@ public:
 	//void addComponent(BaseComponent*);
 private:
 	void addComponent(BaseComponent*);	// made this private. only way to add component is via EntityManager
-
-	Mutex componentMutex;
-	Mutex repMutex;
 
 	ComponentMap	mComponents;
 	ComponentRepMap	mComponentRepresentations;
@@ -139,6 +136,7 @@ public:
 private:
 	Mutex mIdMutex;
 	Mutex mEntitiesMutex;
+	Mutex mComponentMutex;
 	// Entities book-keeping data-structures ////////////////////////
 	/* Note:	for now we clump all entities in one data-structure.
 	 *			In the future however, as the complexities of the scenes we
@@ -161,6 +159,8 @@ private:
 template <typename T>
 T& EntityManager::addComponentToEntity(EntityId _id)
 {
+	MutexLock lock(mComponentMutex);
+	
 	BaseComponent* pComponent = nullptr;
 
 	const eastl::unordered_map< uint32_t, ComponentGeneratorFctPtr >& CompGenMap   = ComponentRegistrator::getInstance()->getComponentGeneratorMap();

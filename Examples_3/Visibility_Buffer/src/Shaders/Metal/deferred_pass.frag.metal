@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -27,21 +27,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-struct PackedVertexPosData {
-    packed_float3 position;
-};
-
-struct PackedVertexTexcoord {
-    packed_float2 texCoord;
-};
-
-struct PackedVertexNormal {
-    packed_float3 normal;
-};
-
-struct PackedVertexTangent {
-    packed_float3 tangent;
-};
+#include "shader_defs.h"
 
 struct VSOutput {
 	float4 position [[position]];
@@ -59,29 +45,45 @@ struct PSOutput
     float4 simulation   [[color(3)]];
 };
 
+struct Textures {
+    sampler textureFilter;
+    array<texture2d<float>,MATERIAL_BUFFER_SIZE> diffuseMaps;
+    array<texture2d<float>,MATERIAL_BUFFER_SIZE> normalMaps;
+    array<texture2d<float>,MATERIAL_BUFFER_SIZE> specularMaps;
+    constant MeshConstants* meshConstantsBuffer;
+};
+
 // Pixel shader for opaque geometry
-[[early_fragment_tests]] fragment PSOutput stageMain(VSOutput input                 [[stage_in]],
-                                                     sampler textureSampler         [[sampler(0)]],
-                                                     texture2d<float> diffuseMap    [[texture(0)]],
-                                                     texture2d<float> normalMap     [[texture(1)]],
-                                                     texture2d<float> specularMap   [[texture(2)]])
-{    
-    PSOutput Out;
-    
-    float4 normalMapRG = normalMap.sample(textureSampler,input.texCoord);
-    
-    float3 reconstructedNormalMap;
-    reconstructedNormalMap.xy = normalMapRG.ga * 2 - 1;
-    reconstructedNormalMap.z = sqrt(1 - dot(reconstructedNormalMap.xy, reconstructedNormalMap.xy));
-    
-    float3 normal = input.normal;
-    float3 tangent = input.tangent;
-    float3 binormal = cross(tangent, normal);
-    
-    Out.normal = float4((reconstructedNormalMap.x * tangent + reconstructedNormalMap.y * binormal + reconstructedNormalMap.z * normal) * 0.5 + 0.5, 0.0);
-    Out.albedo = diffuseMap.sample(textureSampler,input.texCoord);
+[[early_fragment_tests]] fragment PSOutput stageMain(
+    VSOutput input                                     [[stage_in]],
+    constant Textures& textures                        [[buffer(UNIT_VBPASS_TEXTURES)]],
+    constant uint* indirectMaterialBuffer              [[buffer(UNIT_INDIRECT_MATERIAL_RW)]],
+    constant uint& drawID                              [[buffer(UINT_VBPASS_DRAWID)]]
+)
+{
+	PSOutput Out;
+	
+	uint matBaseSlot = BaseMaterialBuffer(false, VIEW_CAMERA); //1 is camera view, 0 is shadow map view
+	uint materialID = indirectMaterialBuffer[matBaseSlot + drawID];
+	
+	Out.albedo = textures.diffuseMaps[materialID].sample(textures.textureFilter, input.texCoord);
+	
+	// CALCULATE PIXEL COLOR USING INTERPOLATED ATTRIBUTES
+	// Reconstruct normal map Z from X and Y
+	float4 normalData = textures.normalMaps[materialID].sample(textures.textureFilter, input.texCoord);
+	float3 reconstructedNormalMap;
+	reconstructedNormalMap.xy = normalData.ga * 2 - 1;
+	reconstructedNormalMap.z = sqrt(1 - dot(reconstructedNormalMap.xy, reconstructedNormalMap.xy));
+	
+	float3 normal = normalize(input.normal);
+	float3 tangent = normalize(input.tangent);
+	// Calculate vertex binormal from normal and tangent
+	float3 binormal = normalize(cross(tangent, normal));
+	// Calculate pixel normal using the normal map and the tangent space vectors
+	Out.normal = float4((reconstructedNormalMap.x * tangent + reconstructedNormalMap.y * binormal + reconstructedNormalMap.z * normal) * 0.5 + 0.5, 0.0);
 	Out.albedo.a = 0.0;
-    Out.specular = specularMap.sample(textureSampler, input.texCoord);
-    Out.simulation = float4(0.0f);
-    return Out;
+	Out.specular = textures.specularMaps[materialID].sample(textures.textureFilter, input.texCoord);
+	Out.simulation = 0.0;
+	
+	return Out;
 }

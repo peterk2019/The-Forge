@@ -1275,8 +1275,8 @@ inline const Matrix4 Matrix4::frustum(float left, float right, float bottom, flo
                    Vector4(sseSelect(zero, _mm_mul_ps(diagonal, sseSplat(f.m128, 0)), select_z)));
 }
 
-//========================================= #ConfettiMathExtensionsBegin ================================================
-// Note: If math library is updated, remember to add the below functions. search for #ConfettiMathExtensions
+//========================================= #TheForgeMathExtensionsBegin ================================================
+// Note: If math library is updated, remember to add the below functions. search for #TheForgeMathExtensions
 
 // PROJECTION MATRIX CONVENTION
 //----------------------------------------------------------------------------------------
@@ -1473,6 +1473,18 @@ inline const Matrix4 Matrix4::orthographic(float left, float right, float bottom
 #endif
 }
 
+inline const Matrix4 Matrix4::orthographicReverseZ(float left, float right, float bottom, float top, float zNear, float zFar)
+{
+	Matrix4 orthoMatrix = orthographic(left, right, bottom, top, zNear, zFar);
+
+	const Vector4 &col2 = orthoMatrix.mCol2;
+	const Vector4 &col3 = orthoMatrix.mCol3;
+	orthoMatrix.mCol2.setZ(-col2.getZ());
+	orthoMatrix.mCol3.setZ(-col3.getZ() * zFar / zNear);
+
+	return orthoMatrix;
+}
+
 inline const Matrix4 Matrix4::cubeProjection(const float zNear, const float zFar)
 {
 #if USE_DIRECTX_PROJECTION_MATRIX_CONVENTION
@@ -1620,7 +1632,7 @@ inline const Matrix4 Matrix4::rotationXY(const float radiansX, const float radia
 		0, 0, 0, 1);
 }
 
-//========================================= #ConfettiMathExtensionsEnd ==================================================
+//========================================= #TheForgeMathExtensionsEnd ==================================================
 
 
 inline const Matrix4 select(const Matrix4 & mat0, const Matrix4 & mat1, bool select1)
@@ -2134,7 +2146,7 @@ inline void print(const Transform3 & tfrm, const char * name)
 
 
 //CONFFX_TEST_BEGIN
-//========================================= #ConfettiMathExtensionsBegin ================================================
+//========================================= #TheForgeMathExtensionsBegin ================================================
 
 // ========================================================
 // Transform3
@@ -2162,7 +2174,7 @@ inline void print(const AffineTransform & tfrm, const char * name)
 }
 
 #endif // VECTORMATH_DEBUG
-//========================================= #ConfettiMathExtensionsEnd ================================================
+//========================================= #TheForgeMathExtensionsEnd ================================================
 //CONFFX_TEST_END
 
 // ========================================================

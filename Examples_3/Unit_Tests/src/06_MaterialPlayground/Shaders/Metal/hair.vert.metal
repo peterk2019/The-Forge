@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  * 
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -47,44 +47,9 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#include "hair.h"
+
 #define EPSILON 1e-7f
-
-struct CameraData
-{
-	float4x4 CamVPMatrix;
-	float4x4 CamInvVPMatrix;
-	float3 CamPos;
-	float fAmbientLightIntensity;
-	int bUseEnvironmentLight;
-	float fEnvironmentLightIntensity;
-	float fAOIntensity;
-
-	int renderMode;
-	float fNormalMapIntensity;
-};
-struct HairData
-{
-	float4x4 Transform;
-	uint RootColor;
-	uint StrandColor;
-	float ColorBias;
-	float Kd;
-	float Ks1;
-	float Ex1;
-	float Ks2;
-	float Ex2;
-	float FiberRadius;
-	float FiberSpacing;
-	uint NumVerticesPerStrand;
-};
-
-struct GlobalHairData
-{
-	float4 Viewport;
-	float4 Gravity;
-	float4 Wind;
-	float TimeStep;
-};
 
 float4 GetStrandColor(int index, uint RootColor, uint StrandColor, uint NumVerticesPerStrand, float ColorBias)
 {
@@ -97,37 +62,35 @@ float4 GetStrandColor(int index, uint RootColor, uint StrandColor, uint NumVerti
 	return mix(rootColor, strandColor, colorWeight);
 }
 
-#ifdef HAIR_SHADOW
-
+#if defined(HAIR_SHADOW)
 struct VSOutput
 {
 	float4 Position[[position]];
 };
 
-vertex VSOutput stageMain(uint vertexID[[vertex_id]],
-    device float4* GuideHairVertexPositions[[buffer(0)]],
-    device float4* GuideHairVertexTangents[[buffer(1)]],
-    device float* HairThicknessCoefficients[[buffer(2)]],
-    constant CameraData& cbCamera [[buffer(3)]],
-    constant HairData& cbHair [[buffer(4)]])
+vertex VSOutput stageMain(
+    uint vertexID                            [[vertex_id]],
+    constant VSDataPerBatch& vsDataPerBatch  [[buffer(UPDATE_FREQ_PER_BATCH)]],
+    constant VSDataPerDraw& vsDataPerDraw    [[buffer(UPDATE_FREQ_PER_DRAW)]]
+)
 {
 	uint index = vertexID / 2;
 
-	float3 v = GuideHairVertexPositions[index].xyz;
-	float3 t = GuideHairVertexTangents[index].xyz;
+	float3 v = vsDataPerDraw.GuideHairVertexPositions[index].xyz;
+	float3 t = vsDataPerDraw.GuideHairVertexTangents[index].xyz;
 
-	v = (cbHair.Transform * float4(v, 1.0f)).xyz;
-	t = normalize((cbHair.Transform * float4(t, 0.0f)).xyz);
+	v = (vsDataPerDraw.cbHair.Transform * float4(v, 1.0f)).xyz;
+	t = normalize((vsDataPerDraw.cbHair.Transform * float4(t, 0.0f)).xyz);
 
-	float3 right = normalize(cross(t, normalize(v - cbCamera.CamPos)));
+	float3 right = normalize(cross(t, normalize(v - vsDataPerBatch.cbCamera.CamPos)));
 
-	float thickness = HairThicknessCoefficients[index];
+	float thickness = vsDataPerDraw.HairThicknessCoefficients[index];
 
 	float4 hairEdgePositions[2];
-	hairEdgePositions[0] = float4(v + -right * thickness * cbHair.FiberRadius, 1.0f);
-	hairEdgePositions[1] = float4(v + right * thickness * cbHair.FiberRadius, 1.0f);
-	hairEdgePositions[0] = cbCamera.CamVPMatrix *  hairEdgePositions[0];
-	hairEdgePositions[1] = cbCamera.CamVPMatrix *  hairEdgePositions[1];
+	hairEdgePositions[0] = float4(v + -right * thickness * vsDataPerDraw.cbHair.FiberRadius, 1.0f);
+	hairEdgePositions[1] = float4(v + right * thickness * vsDataPerDraw.cbHair.FiberRadius, 1.0f);
+	hairEdgePositions[0] = vsDataPerBatch.cbCamera.CamVPMatrix *  hairEdgePositions[0];
+	hairEdgePositions[1] = vsDataPerBatch.cbCamera.CamVPMatrix *  hairEdgePositions[1];
 
 	VSOutput output;
 	output.Position = hairEdgePositions[vertexID & 1];
@@ -144,42 +107,41 @@ struct VSOutput
 	float2 W0W1;
 };
 
-vertex VSOutput stageMain(uint vertexID[[vertex_id]],
-    device float4* GuideHairVertexPositions[[buffer(0)]],
-    device float4* GuideHairVertexTangents[[buffer(1)]],
-    device float* HairThicknessCoefficients[[buffer(2)]],
-    constant CameraData& cbCamera [[buffer(3)]],
-    constant HairData& cbHair [[buffer(4)]],
-    constant GlobalHairData& cbHairGlobal [[buffer(5)]])
+vertex VSOutput stageMain(
+    uint vertexID      [[vertex_id]],
+    constant VSData& vsData                  [[buffer(UPDATE_FREQ_NONE)]],
+    constant VSDataPerFrame& vsDataPerFrame  [[buffer(UPDATE_FREQ_PER_FRAME)]],
+    constant VSDataPerDraw& vsDataPerDraw    [[buffer(UPDATE_FREQ_PER_DRAW)]]
+)
 {
 	uint index = vertexID / 2;
 
-	float3 v = GuideHairVertexPositions[index].xyz;
-	float3 t = GuideHairVertexTangents[index].xyz;
+	float3 v = vsDataPerDraw.GuideHairVertexPositions[index].xyz;
+	float3 t = vsDataPerDraw.GuideHairVertexTangents[index].xyz;
 
-	v = (cbHair.Transform * float4(v, 1.0f)).xyz;
-	t = normalize((cbHair.Transform * float4(t, 0.0f)).xyz);
+	v = (vsDataPerDraw.cbHair.Transform * float4(v, 1.0f)).xyz;
+	t = normalize((vsDataPerDraw.cbHair.Transform * float4(t, 0.0f)).xyz);
 
-	float3 right = normalize(cross(t, normalize(v - cbCamera.CamPos)));
-	float2 projRight = normalize((cbCamera.CamVPMatrix * float4(right, 0)).xy);
+	float3 right = normalize(cross(t, normalize(v - vsDataPerFrame.cbCamera.CamPos)));
+	float2 projRight = normalize((vsDataPerFrame.cbCamera.CamVPMatrix * float4(right, 0)).xy);
 
 	float expandPixels = 0.71f;
 
-	float thickness = HairThicknessCoefficients[index];
+	float thickness = vsDataPerDraw.HairThicknessCoefficients[index];
 
 	float4 hairEdgePositions[2];
-	hairEdgePositions[0] = float4(v + -right * thickness * cbHair.FiberRadius, 1.0f);
-	hairEdgePositions[1] = float4(v + right * thickness * cbHair.FiberRadius, 1.0f);
-	hairEdgePositions[0] = cbCamera.CamVPMatrix * hairEdgePositions[0];
-	hairEdgePositions[1] = cbCamera.CamVPMatrix * hairEdgePositions[1];
+	hairEdgePositions[0] = float4(v + -right * thickness * vsDataPerDraw.cbHair.FiberRadius, 1.0f);
+	hairEdgePositions[1] = float4(v + right * thickness * vsDataPerDraw.cbHair.FiberRadius, 1.0f);
+	hairEdgePositions[0] = vsDataPerFrame.cbCamera.CamVPMatrix * hairEdgePositions[0];
+	hairEdgePositions[1] = vsDataPerFrame.cbCamera.CamVPMatrix * hairEdgePositions[1];
 
 	float dir = (vertexID & 1) ? 1.0f : -1.0f;
 
 	VSOutput output;
-	output.Position = hairEdgePositions[vertexID & 1] + dir * float4(projRight * expandPixels / cbHairGlobal.Viewport.w, 0.0f, 0.0f) * hairEdgePositions[vertexID & 1].w;
+	output.Position = hairEdgePositions[vertexID & 1] + dir * float4(projRight * expandPixels / vsData.cbHairGlobal.Viewport.w, 0.0f, 0.0f) * hairEdgePositions[vertexID & 1].w;
 	output.Tangent = float4(t, thickness);
 	output.P0P1 = float4(hairEdgePositions[0].xy, hairEdgePositions[1].xy);
-	output.Color = GetStrandColor(index, cbHair.RootColor, cbHair.StrandColor, cbHair.NumVerticesPerStrand, cbHair.ColorBias);
+	output.Color = GetStrandColor(index, vsDataPerDraw.cbHair.RootColor, vsDataPerDraw.cbHair.StrandColor, vsDataPerDraw.cbHair.NumVerticesPerStrand, vsDataPerDraw.cbHair.ColorBias);
 	output.W0W1 = float2(hairEdgePositions[0].w, hairEdgePositions[1].w);
 	return output;
 }

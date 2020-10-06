@@ -22,7 +22,8 @@ public:
 		state_(&state),
 		previousState_(&previousState),
 		nextState_(manager.GetAllocator(), KeyCount_),
-		delta_(0)
+		delta_(0),
+		textCount_(0)
 	{
 		dialect_[AKEYCODE_SPACE] = KeySpace;
 
@@ -72,7 +73,7 @@ public:
 		dialect_[AKEYCODE_DPAD_UP] = KeyUp;
 		dialect_[AKEYCODE_DPAD_DOWN] = KeyDown;
 		dialect_[AKEYCODE_HOME] = KeyHome;
-		dialect_[AKEYCODE_DEL] = KeyDelete;
+		dialect_[AKEYCODE_DEL] = KeyBackSpace;
 		dialect_[AKEYCODE_PAGE_UP] = KeyPageUp;
 		dialect_[AKEYCODE_PAGE_DOWN] = KeyPageDown;
 
@@ -137,43 +138,61 @@ public:
 	{
 		delta_ = delta;
 		*state_ = nextState_;
+		textCount_ = 0;
+        memset(textBuffer_, 0, sizeof(textBuffer_));
 	}
 
 	bool IsTextInputEnabled() const override { return textInputEnabled_; }
 	void SetTextInputEnabled(bool enabled) override { textInputEnabled_ = enabled; }
+	wchar_t* GetTextInput(uint32_t* count)
+	{
+		*count = textCount_;
+		return textBuffer_;
+	}
 
 	virtual InputState * GetNextInputState() override
     {
 		return &nextState_;
 	}
 
-	char GetNextCharacter(gainput::DeviceButtonId buttonId) override
+	// Based off https://stackoverflow.com/questions/21124051/receive-complete-android-unicode-input-in-c-c/21130443#21130443
+	int32_t GetUnicodeChar(ANativeActivity* activity, int32_t eventType, int32_t keyCode, int32_t metaState)
 	{
-		if (!textBuffer_.CanGet())
+		JavaVM* javaVM = activity->vm;
+		JNIEnv* jniEnv = activity->env;
+		
+		jint result = javaVM->AttachCurrentThread(&jniEnv, NULL);
+		if (result == JNI_ERR)
 		{
 			return 0;
 		}
-		InputCharDesc currentDesc = textBuffer_.Get();
 
-		//Removed buffered inputs for which we didn't call GetNextCharacter
-		if (buttonId != gainput::InvalidDeviceButtonId && buttonId < gainput::KeyCount_)
+		jclass keyEventCls = jniEnv->FindClass("android/view/KeyEvent");
+		int32_t unicodeKey = 0;
+
+		if (metaState == 0)
 		{
-			while (currentDesc.buttonId != buttonId)
-			{
-				if (!textBuffer_.CanGet())
-				{
-					return 0;
-				}
-				currentDesc = textBuffer_.Get();
-			}
+			jmethodID getUnicodeCharMethod = jniEnv->GetMethodID(keyEventCls, "getUnicodeChar", "()I");
+			jmethodID eventConstructor = jniEnv->GetMethodID(keyEventCls, "<init>", "(II)V");
+			jobject eventObj = jniEnv->NewObject(keyEventCls, eventConstructor, eventType, keyCode);
+
+			unicodeKey = jniEnv->CallIntMethod(eventObj, getUnicodeCharMethod);
+		}
+		else
+		{
+			jmethodID getUnicodeCharMethod = jniEnv->GetMethodID(keyEventCls, "getUnicodeChar", "(I)I");
+			jmethodID eventConstructor = jniEnv->GetMethodID(keyEventCls, "<init>", "(II)V");
+			jobject eventObj = jniEnv->NewObject(keyEventCls, eventConstructor, eventType, keyCode);
+
+			unicodeKey = jniEnv->CallIntMethod(eventObj, getUnicodeCharMethod, metaState);
 		}
 
-		//if button id was provided then we return the appropriate character
-		//else we return the first buffered character
-		return currentDesc.inputChar;
+		javaVM->DetachCurrentThread();
+
+		return unicodeKey;
 	}
 
-	int32_t HandleInput(AInputEvent* event)
+	int32_t HandleInput(AInputEvent* event, ANativeActivity* activity)
 	{
 		GAINPUT_ASSERT(event);
 		GAINPUT_ASSERT(state_);
@@ -183,12 +202,26 @@ public:
 			return 0;
 		}
 
-		const bool pressed = AKeyEvent_getAction(event) == AKEY_EVENT_ACTION_DOWN;
+		const int32_t eventType = AKeyEvent_getAction(event);
+		const bool pressed = eventType == AKEY_EVENT_ACTION_DOWN;
 		const int32_t keyCode = AKeyEvent_getKeyCode(event);
+		const int32_t metaState = AKeyEvent_getMetaState(event);
+
+		if (!pressed)
+		{
+			int32_t unicodeVal = GetUnicodeChar(activity, eventType, keyCode, metaState);
+			if (unicodeVal > 0) // Is it a character
+			{
+				const char unicodeChar = (char)unicodeVal;
+				textBuffer_[textCount_++] = unicodeChar;
+			}
+		}
+
 		if (dialect_.count(keyCode))
 		{
 			const DeviceButtonId buttonId = dialect_[keyCode];
 			HandleButton(device_, nextState_, delta_, buttonId, pressed);
+
 			return 1;
 		}
 
@@ -209,12 +242,8 @@ private:
 	InputManager& manager_;
 	InputDevice& device_;
 	bool textInputEnabled_;
-	struct InputCharDesc
-	{
-		char inputChar;
-		gainput::DeviceButtonId buttonId;
-	};
-	RingBuffer<GAINPUT_TEXT_INPUT_QUEUE_LENGTH, InputCharDesc> textBuffer_;
+	wchar_t textBuffer_[GAINPUT_TEXT_INPUT_QUEUE_LENGTH];
+	uint32_t textCount_;
 	HashMap<unsigned, DeviceButtonId> dialect_;
 	InputState* state_;
 	InputState* previousState_;

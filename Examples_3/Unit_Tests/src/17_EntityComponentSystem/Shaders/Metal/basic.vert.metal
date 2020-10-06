@@ -40,19 +40,17 @@ struct Vertex_Shader
 	VsParams(VsParams),instanceBuffer(instanceBuffer) {}
 };
 
-
 vertex Vertex_Shader::VSOutput stageMain(
 										 uint vertexId [[vertex_id]],
 										 uint instanceId [[instance_id]],
-										 constant Vertex_Shader::Uniforms_VsParams & VsParams [[buffer(2)]],
-										 constant Vertex_Shader::InstanceData* instanceBuffer [[buffer(3)]])
+                                         constant Vertex_Shader::InstanceData* instanceBuffer [[buffer(0)]],
+										 constant Vertex_Shader::Uniforms_VsParams& RootConstant [[buffer(1)]]
+)
 {
 	uint vertexId0;
 	vertexId0 = vertexId;
 	uint instanceId0;
 	instanceId0 = instanceId;
-	Vertex_Shader main(
-					   VsParams,
-					   instanceBuffer);
+	Vertex_Shader main(RootConstant, instanceBuffer);
 	return main.main(vertexId0, instanceId0);
 }

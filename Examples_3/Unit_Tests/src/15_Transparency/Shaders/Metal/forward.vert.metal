@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2019 Confetti Interactive Inc.
+* Copyright (c) 2018-2020 The Forge Interactive Inc.
 *
 * This file is part of The-Forge
 * (see https://github.com/ConfettiFX/The-Forge).
@@ -23,36 +23,13 @@
 */
 #include <metal_stdlib>
 using namespace metal;
-#ifndef MAX_NUM_OBJECTS
-#define MAX_NUM_OBJECTS 64
-#endif
+
+#include "argument_buffers.h"
 
 struct Vertex_Shader
 {
-
-    struct ObjectInfo
-    {
-        float4x4 toWorld;
-        float4x4 normalMat;
-        uint matID;
-    };
-    struct Uniforms_ObjectUniformBlock
-    {
-        ObjectInfo objectInfo[MAX_NUM_OBJECTS];
-    };
     constant Uniforms_ObjectUniformBlock & ObjectUniformBlock;
-    struct Uniforms_DrawInfoRootConstant
-    {
-        uint baseInstance = 0;
-    };
     constant Uniforms_DrawInfoRootConstant & DrawInfoRootConstant;
-    struct Uniforms_CameraUniform
-    {
-        float4x4 camViewProj;
-        float4x4 camViewMat;
-        float4 camClipInfo;
-        float4 camPosition;
-    };
     constant Uniforms_CameraUniform & CameraUniform;
     struct VSInput
     {
@@ -100,13 +77,12 @@ constant Uniforms_ObjectUniformBlock & ObjectUniformBlock,constant Uniforms_Draw
 ObjectUniformBlock(ObjectUniformBlock),DrawInfoRootConstant(DrawInfoRootConstant),CameraUniform(CameraUniform) {}
 };
 
-
 vertex Vertex_Shader::VSOutput stageMain(
-    Vertex_Shader::VSInput input [[stage_in]],
-uint InstanceID [[instance_id]],
-    constant Vertex_Shader::Uniforms_ObjectUniformBlock & ObjectUniformBlock [[buffer(1)]],
-    constant Vertex_Shader::Uniforms_DrawInfoRootConstant & DrawInfoRootConstant [[buffer(2)]],
-    constant Vertex_Shader::Uniforms_CameraUniform & CameraUniform [[buffer(11)]])
+    Vertex_Shader::VSInput input            [[stage_in]],
+    uint InstanceID                         [[instance_id]],
+    constant ArgDataPerFrame& vsData                 [[buffer(UPDATE_FREQ_PER_FRAME)]],
+    constant Uniforms_DrawInfoRootConstant & DrawInfoRootConstant [[buffer(UPDATE_FREQ_USER)]]
+)
 {
     Vertex_Shader::VSInput input0;
     input0.Position = input.Position;
@@ -114,9 +90,6 @@ uint InstanceID [[instance_id]],
     input0.UV = input.UV;
     uint InstanceID0;
     InstanceID0 = InstanceID;
-    Vertex_Shader main(
-    ObjectUniformBlock,
-    DrawInfoRootConstant,
-    CameraUniform);
+    Vertex_Shader main(vsData.ObjectUniformBlock, DrawInfoRootConstant, vsData.CameraUniform);
     return main.main(input0, InstanceID0);
 }

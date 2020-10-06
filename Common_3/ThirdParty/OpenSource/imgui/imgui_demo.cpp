@@ -33,7 +33,7 @@
 #else
 #include <stdint.h>         // intptr_t
 #endif
-#include "../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../OS/Interfaces/IMemory.h"
 
 #ifdef _MSC_VER
 #pragma warning (disable: 4996) // 'This function or variable may be unsafe': strcpy, strdup, sprintf, vsnprintf, sscanf, fopen
@@ -2686,7 +2686,7 @@ struct ExampleAppConsole
     int                   HistoryPos;    // -1: new line, 0..History.Size-1 browsing history.
     eastl::vector<const char*> Commands;
 
-    ExampleAppConsole()
+    bool Init()
     {
         ClearLog();
         memset(InputBuf, 0, sizeof(InputBuf));
@@ -2696,24 +2696,30 @@ struct ExampleAppConsole
         Commands.push_back("CLEAR");
         Commands.push_back("CLASSIFY");  // "classify" is only here to provide an example of "C"+[tab] completing to "CL" and displaying matches.
         AddLog("Welcome to Dear ImGui!");
+
+		return true;
     }
-    ~ExampleAppConsole()
+    void Destroy()
     {
         ClearLog();
         for (int i = 0; i < History.size(); i++)
-            conf_free(History[i]);
+            tf_free(History[i]);
+
+		Commands.set_capacity(0);
+		History.set_capacity(0);
+		Items.set_capacity(0);
     }
 
     // Portable helpers
     static int   Stricmp(const char* str1, const char* str2)         { int d; while ((d = toupper(*str2) - toupper(*str1)) == 0 && *str1) { str1++; str2++; } return d; }
     static int   Strnicmp(const char* str1, const char* str2, int n) { int d = 0; while (n > 0 && (d = toupper(*str2) - toupper(*str1)) == 0 && *str1) { str1++; str2++; n--; } return d; }
-    static char* Strdup(const char *str)                             { size_t len = strlen(str) + 1; void* buff = conf_malloc(len); return (char*)memcpy(buff, (const void*)str, len); }
+    static char* Strdup(const char *str)                             { size_t len = strlen(str) + 1; void* buff = tf_malloc(len); return (char*)memcpy(buff, (const void*)str, len); }
     static void  Strtrim(char* str)                                  { char* str_end = str + strlen(str); while (str_end > str && str_end[-1] == ' ') str_end--; *str_end = 0; }
 
     void    ClearLog()
     {
         for (int i = 0; i < Items.size(); i++)
-            conf_free(Items[i]);
+            tf_free(Items[i]);
         Items.clear();
         ScrollToBottom = true;
     }
@@ -2842,7 +2848,7 @@ struct ExampleAppConsole
         for (int i = (int)(History.size()-1); i >= 0; i--)
             if (Stricmp(History[i], command_line) == 0)
             {
-                conf_free(History[i]);
+                tf_free(History[i]);
                 History.erase(History.begin() + i);
                 break;
             }
@@ -2978,10 +2984,17 @@ struct ExampleAppConsole
     }
 };
 
+static ExampleAppConsole gExampleAppConsole;
+
 static void ShowExampleAppConsole(bool* p_open)
 {
-    static ExampleAppConsole console;
-    console.Draw("Example: Console", p_open);
+	static bool init_app_console = true;
+	if (init_app_console)
+	{
+		init_app_console = false;
+		gExampleAppConsole.Init();
+	}
+	gExampleAppConsole.Draw("Example: Console", p_open);
 }
 
 //-----------------------------------------------------------------------------
@@ -2998,6 +3011,13 @@ struct ExampleAppLog
     ImGuiTextFilter     Filter;
     eastl::vector<int>       LineOffsets;        // Index to lines offset
     bool                ScrollToBottom;
+
+	void    Destroy()
+	{
+		Buf.set_capacity(0);
+		Filter.Filters.set_capacity(0);
+		LineOffsets.set_capacity(0);
+	}
 
     void    Clear()     { Buf = ""; LineOffsets.clear(); }
 
@@ -3061,24 +3081,29 @@ struct ExampleAppLog
     }
 };
 
+static ExampleAppLog gExampleAppLog;
+
 // Demonstrate creating a simple log window with basic filtering.
 static void ShowExampleAppLog(bool* p_open)
 {
-    static ExampleAppLog log;
-
     // Demo: add random items (unless Ctrl is held)
     static double last_time = -1.0;
     double time = ImGui::GetTime();
     if (time - last_time >= 0.20f && !ImGui::GetIO().KeyCtrl)
     {
         const char* random_words[] = { "system", "info", "warning", "error", "fatal", "notice", "log" };
-        log.AddLog("[%s] Hello, time is %.1f, frame count is %d\n", random_words[rand() % IM_ARRAYSIZE(random_words)], time, ImGui::GetFrameCount());
+		gExampleAppLog.AddLog("[%s] Hello, time is %.1f, frame count is %d\n", random_words[rand() % IM_ARRAYSIZE(random_words)], time, ImGui::GetFrameCount());
         last_time = time;
     }
 
-    log.Draw("Example: Log", p_open);
+	gExampleAppLog.Draw("Example: Log", p_open);
 }
 
+void ImGui::DestroyDemoWindow()
+{
+	gExampleAppConsole.Destroy();
+	gExampleAppLog.Destroy();
+}
 //-----------------------------------------------------------------------------
 // EXAMPLE APP CODE: SIMPLE LAYOUT
 //-----------------------------------------------------------------------------

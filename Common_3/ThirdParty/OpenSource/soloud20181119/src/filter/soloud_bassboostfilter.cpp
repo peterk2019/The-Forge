@@ -25,7 +25,7 @@ freely, subject to the following restrictions:
 #include <string.h>
 #include "soloud.h"
 #include "soloud_bassboostfilter.h"
-#include "../../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../../OS/Interfaces/IMemory.h"
 
 
 namespace SoLoud
@@ -61,6 +61,6 @@ namespace SoLoud
 
 	FilterInstance *BassboostFilter::createInstance()
 	{
-		return conf_new(BassboostFilterInstance, this);
+		return tf_new(BassboostFilterInstance, this);
 	}
 }

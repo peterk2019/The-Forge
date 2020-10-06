@@ -26,7 +26,7 @@ freely, subject to the following restrictions:
 #include <string.h>
 #include "soloud.h"
 #include "soloud_waveshaperfilter.h"
-#include "../../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../../OS/Interfaces/IMemory.h"
 
 namespace SoLoud
 {
@@ -83,6 +83,6 @@ namespace SoLoud
 
 	WaveShaperFilterInstance *WaveShaperFilter::createInstance()
 	{
-		return conf_new(WaveShaperFilterInstance, this);
+		return tf_new(WaveShaperFilterInstance, this);
 	}
 }

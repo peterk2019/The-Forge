@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2019 Confetti Interactive Inc.
+* Copyright (c) 2018-2020 The Forge Interactive Inc.
 *
 * This file is part of The-Forge
 * (see https://github.com/ConfettiFX/The-Forge).
@@ -27,18 +27,21 @@
 struct Renderer;
 struct RenderTarget;
 struct Cmd;
+struct PipelineCache;
+
+#include "IOperatingSystem.h"
 
 class IMiddleware
 {
 	public:
 	// Our init function should only be called once
 	// The middleware has to keep these pointers
-	virtual bool Init(Renderer* renderer) = 0;
+	virtual bool Init(Renderer* renderer, PipelineCache* pCache = NULL) = 0;
 	virtual void Exit() = 0;
 
 	// When app is loaded, app is provided of the render targets to load
 	// App is responsible to keep track of these render targets until load is called again
-	virtual bool Load(RenderTarget** rts) = 0;
+	virtual bool Load(RenderTarget** rts, uint32_t count = 1) = 0;
 	virtual void Unload() = 0;
 
 	virtual void Update(float deltaTime) = 0;

@@ -33,12 +33,6 @@ static inline ENUM_TYPE operator&=(ENUM_TYPE& a, ENUM_TYPE b) \
 #import <MetalPerformanceShaders/MetalPerformanceShaders.h>
 #endif
 
-#if defined(VULKAN)
-#define ApiExport //extern "C"
-#else
-#define ApiExport
-#endif
-
 typedef struct Renderer Renderer;
 typedef struct Buffer Buffer;
 typedef struct Texture Texture;
@@ -52,6 +46,8 @@ typedef struct RootSignatureDesc RootSignatureDesc;
 typedef struct ShaderResource ShaderResource;
 typedef struct DescriptorData DescriptorData;
 typedef struct ID3D12Device5 ID3D12Device5;
+typedef struct ParallelPrimitives ParallelPrimitives;
+typedef struct SSVGFDenoiser SSVGFDenoiser;
 
 //Supported by DXR. Metal ignores this.
 typedef enum AccelerationStructureBuildFlags
@@ -64,7 +60,7 @@ typedef enum AccelerationStructureBuildFlags
 	ACCELERATION_STRUCTURE_BUILD_FLAG_MINIMIZE_MEMORY = 0x10,
 	ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE = 0x20,
 } AccelerationStructureBuildFlags;
-MAKE_ENUM_FLAG(unsigned, AccelerationStructureBuildFlags)
+MAKE_ENUM_FLAG(uint32_t, AccelerationStructureBuildFlags)
 
 //Rustam: check if this can be mapped to Metal
 typedef enum AccelerationStructureGeometryFlags
@@ -73,7 +69,7 @@ typedef enum AccelerationStructureGeometryFlags
 	ACCELERATION_STRUCTURE_GEOMETRY_FLAG_OPAQUE = 0x1,
 	ACCELERATION_STRUCTURE_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION = 0x2
 } AccelerationStructureGeometryFlags;
-MAKE_ENUM_FLAG(unsigned, AccelerationStructureGeometryFlags)
+MAKE_ENUM_FLAG(uint32_t, AccelerationStructureGeometryFlags)
 
 //Rustam: check if this can be mapped to Metal
 typedef enum AccelerationStructureInstanceFlags
@@ -84,31 +80,32 @@ typedef enum AccelerationStructureInstanceFlags
 	ACCELERATION_STRUCTURE_INSTANCE_FLAG_FORCE_OPAQUE = 0x4,
 	ACCELERATION_STRUCTURE_INSTANCE_FLAG_FORCE_NON_OPAQUE = 0x8
 } AccelerationStructureInstanceFlags;
-MAKE_ENUM_FLAG(unsigned, AccelerationStructureInstanceFlags)
+MAKE_ENUM_FLAG(uint32_t, AccelerationStructureInstanceFlags)
 
 typedef struct AccelerationStructureInstanceDesc
 {
-    unsigned                mAccelerationStructureIndex;
+	uint32_t                mAccelerationStructureIndex;
 	/// Row major affine transform for transforming the vertices in the geometry stored in pAccelerationStructure
-	float				   mTransform[12];
+	float                   mTransform[12];
 	/// User defined instanced ID which can be queried in the shader
-	unsigned				mInstanceID;
-	unsigned				mInstanceMask;
-	unsigned				mInstanceContributionToHitGroupIndex;
+	uint32_t                mInstanceID;
+	uint32_t                mInstanceMask;
+	uint32_t                mInstanceContributionToHitGroupIndex;
 	AccelerationStructureInstanceFlags  mFlags;
 } AccelerationStructureInstanceDesc;
 
 typedef struct AccelerationStructureGeometryDesc
 {
 	AccelerationStructureGeometryFlags  mFlags;
-    float3*     pVertexArray;
-    unsigned    vertexCount;
-    union{
-        uint32_t*       pIndices32;
-        uint16_t*       pIndices16;
+	void*                               pVertexArray;
+	uint32_t                            mVertexCount;
+    union
+	{
+        uint32_t*                       pIndices32;
+        uint16_t*                       pIndices16;
     };
-    unsigned    indicesCount;
-    IndexType   indexType;
+	uint32_t                            mIndexCount;
+	IndexType                           mIndexType;
 } AccelerationStructureGeometryDesc;
 /************************************************************************/
 //	  Bottom Level Structures define the geometry data such as vertex buffers, index buffers
@@ -117,20 +114,19 @@ typedef struct AccelerationStructureGeometryDesc
 /************************************************************************/
 typedef struct AccelerationStructureDescBottom
 {
-	AccelerationStructureBuildFlags		    mFlags;
+	AccelerationStructureBuildFlags         mFlags;
 	/// Number of geometries / instances in thie acceleration structure
-	unsigned								mDescCount;
+	uint32_t                                mDescCount;
     /// Array of geometries in the bottom level acceleration structure
-    AccelerationStructureGeometryDesc*  pGeometryDescs;
+    AccelerationStructureGeometryDesc*      pGeometryDescs;
 } AccelerationStructureDescBottom;
 
 typedef struct AccelerationStructureDescTop
 {
     AccelerationStructureBuildFlags         mFlags;
-    unsigned                                mInstancesDescCount;
+	uint32_t                                mInstancesDescCount;
     AccelerationStructureInstanceDesc*      pInstanceDescs;
-    unsigned                                mBottomASDescsCount;
-    AccelerationStructureDescBottom*        mBottomASDescs;
+    AccelerationStructureDescBottom*        mBottomASDesc;
     IndexType                               mIndexType;
 } AccelerationStructureDescTop;
 /************************************************************************/
@@ -153,82 +149,79 @@ typedef struct RaytracingHitGroup
 	const char*			pHitGroupName;
 } RaytracingHitGroup;
 
-typedef struct RaytracingShaderTableRecordDesc
-{
-	const char*		  pName;
-    bool              mInvokeTraceRay;
-    uint32_t        mHitShaderIndex;
-    uint32_t        mMissShaderIndex;
-} RaytracingShaderTableRecordDesc;
-
 typedef struct RaytracingShaderTableDesc
 {
-	Pipeline*						    pPipeline;
-	RootSignature*						pEmptyRootSignature;
-	DescriptorBinder*					pDescriptorBinder;
-	RaytracingShaderTableRecordDesc*	pRayGenShader;
-	RaytracingShaderTableRecordDesc*	pMissShaders;
-	RaytracingShaderTableRecordDesc*	pHitGroups;
-	unsigned							mMissShaderCount;
-	unsigned							mHitGroupCount;
+	Pipeline*                           pPipeline;
+	RootSignature*                      pGlobalRootSignature;
+	const char*                         pRayGenShader;
+	const char**                        pMissShaders;
+	const char**                        pHitGroups;
+	uint32_t                            mMissShaderCount;
+	uint32_t                            mHitGroupCount;
 } RaytracingShaderTableDesc;
 
 typedef struct RaytracingDispatchDesc
 {
-	uint32_t				mWidth;
-	uint32_t				mHeight;
-    uint32_t                mRootSignatureDescriptorsCount;
-	AccelerationStructure*  pTopLevelAccelerationStructure;
+	uint32_t                mWidth;
+	uint32_t                mHeight;
 	RaytracingShaderTable*  pShaderTable;
-    DescriptorData*         pRootSignatureDescriptorData;
-	RootSignature*          pRootSignature;
-	DescriptorBinder*		pDescriptorBinder;
-    Pipeline*				pPipeline;
+#if defined(METAL)
+	AccelerationStructure*  pTopLevelAccelerationStructure;
+    DescriptorSet*          pSets[DESCRIPTOR_UPDATE_FREQ_COUNT];
+    uint32_t                pIndexes[DESCRIPTOR_UPDATE_FREQ_COUNT];
+#endif
 } RaytracingDispatchDesc;
 
 typedef struct RaytracingBuildASDesc
 {
-	AccelerationStructure* pAccelerationStructure;
-	unsigned  mBottomASIndicesCount;
-	unsigned* pBottomASIndices;
+	AccelerationStructure** ppAccelerationStructures;
+	uint32_t                mCount;
+	uint32_t                mBottomASIndicesCount;
+	uint32_t*               pBottomASIndices;
 } RaytracingBuildASDesc;
 
 struct Raytracing
 {
-	Renderer*		pRenderer;
+	Renderer*                    pRenderer;
 
 #ifdef DIRECT3D12
-	ID3D12Device5*	pDxrDevice;
-	uint64_t		mDescriptorsAllocated;
+	ID3D12Device5*               pDxrDevice;
+	uint64_t                     mDescriptorsAllocated;
 #endif
 #ifdef METAL
-    MPSRayIntersector* pIntersector;
+    MPSRayIntersector*           pIntersector API_AVAILABLE(macos(10.14), ios(12.0));
+	
+	ParallelPrimitives*          pParallelPrimitives;
+	id <MTLComputePipelineState> mClassificationPipeline;
+	id <MTLArgumentEncoder>      mClassificationArgumentEncoder API_AVAILABLE(macos(10.13), ios(11.0));
 #endif
-
 #ifdef VULKAN
 #ifdef VK_NV_RAY_TRACING_SPEC_VERSION
-	VkPhysicalDeviceRayTracingPropertiesNV* pRayTracingProperties;
+	VkPhysicalDeviceRayTracingPropertiesNV mRayTracingProperties;
 #endif
 #endif
 };
 
-const static char* RaytracingShaderSettingsBufferName = "gSettings";
-const uint32_t RaytracingUserdataStartBufferRegister = 10;
-
-#if !defined(ENABLE_RENDERER_RUNTIME_SWITCH)
-
-bool isRaytracingSupported(Renderer* pRenderer);
-bool initRaytracing(Renderer* pRenderer, Raytracing** ppRaytracing);
-void removeRaytracing(Renderer* pRenderer, Raytracing* pRaytracing);
+API_INTERFACE bool FORGE_CALLCONV isRaytracingSupported(Renderer* pRenderer);
+API_INTERFACE bool FORGE_CALLCONV initRaytracing(Renderer* pRenderer, Raytracing** ppRaytracing);
+API_INTERFACE void FORGE_CALLCONV removeRaytracing(Renderer* pRenderer, Raytracing* pRaytracing);
 
 /// pScratchBufferSize - Holds the size of scratch buffer to be passed to cmdBuildAccelerationStructure
-void addAccelerationStructure(Raytracing* pRaytracing, const AccelerationStructureDescTop* pDesc, AccelerationStructure** ppAccelerationStructure);
-void removeAccelerationStructure(Raytracing* pRaytracing, AccelerationStructure* pAccelerationStructure);
+API_INTERFACE void FORGE_CALLCONV addAccelerationStructure(Raytracing* pRaytracing, const AccelerationStructureDescTop* pDesc, AccelerationStructure** ppAccelerationStructure);
+API_INTERFACE void FORGE_CALLCONV removeAccelerationStructure(Raytracing* pRaytracing, AccelerationStructure* pAccelerationStructure);
+/// Free the scratch memory allocated by acceleration structure after it has been built completely
+/// Does not free acceleration structure
+API_INTERFACE void FORGE_CALLCONV removeAccelerationStructureScratch(Raytracing* pRaytracing, AccelerationStructure* pAccelerationStructure);
 
-void addRaytracingShaderTable(Raytracing* pRaytracing, const RaytracingShaderTableDesc* pDesc, RaytracingShaderTable** ppTable);
-void removeRaytracingShaderTable(Raytracing* pRaytracing, RaytracingShaderTable* pTable);
+API_INTERFACE void FORGE_CALLCONV addRaytracingShaderTable(Raytracing* pRaytracing, const RaytracingShaderTableDesc* pDesc, RaytracingShaderTable** ppTable);
+API_INTERFACE void FORGE_CALLCONV removeRaytracingShaderTable(Raytracing* pRaytracing, RaytracingShaderTable* pTable);
 
-void cmdBuildAccelerationStructure(Cmd* pCmd, Raytracing* pRaytracing, RaytracingBuildASDesc* pDesc);
-void cmdDispatchRays(Cmd* pCmd, Raytracing* pRaytracing, const RaytracingDispatchDesc* pDesc);
+API_INTERFACE void FORGE_CALLCONV cmdBuildAccelerationStructure(Cmd* pCmd, Raytracing* pRaytracing, RaytracingBuildASDesc* pDesc);
+API_INTERFACE void FORGE_CALLCONV cmdDispatchRays(Cmd* pCmd, Raytracing* pRaytracing, const RaytracingDispatchDesc* pDesc);
 
+#ifdef METAL
+API_INTERFACE void FORGE_CALLCONV addSSVGFDenoiser(Renderer* pRenderer, SSVGFDenoiser** ppDenoiser);
+API_INTERFACE void FORGE_CALLCONV removeSSVGFDenoiser(SSVGFDenoiser* pDenoiser);
+API_INTERFACE void FORGE_CALLCONV clearSSVGFDenoiserTemporalHistory(SSVGFDenoiser* pDenoiser);
+API_INTERFACE void FORGE_CALLCONV cmdSSVGFDenoise(Cmd* pCmd, SSVGFDenoiser* pDenoiser, Texture* pSourceTexture, Texture* pMotionVectorTexture, Texture* pDepthNormalTexture, Texture* pPreviousDepthNormalTexture, Texture** ppOut);
 #endif

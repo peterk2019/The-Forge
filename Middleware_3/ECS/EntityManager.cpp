@@ -1,4 +1,4 @@
-#include "../../Common_3/OS/Interfaces/ILogManager.h"
+#include "../../Common_3/OS/Interfaces/ILog.h"
 
 #include "EntityManager.h"
 // Components ////////////////////////////////////
@@ -7,33 +7,27 @@
 #include "ComponentRepresentation.h"
 // Component Representations -- as to get component ids /////////////////////////////////////////
 //----
-#include "../../Common_3/OS/Interfaces/IMemoryManager.h" // NOTE: this should be the last include in a .cpp
+#include "../../Common_3/OS/Interfaces/IMemory.h" // NOTE: this should be the last include in a .cpp
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 Entity::~Entity()
 {
+	for (ComponentMap::iterator it = mComponents.begin(); it != mComponents.end(); ++it)
 	{
-		MutexLock componentLock(componentMutex);
-		for (ComponentMap::iterator it = mComponents.begin(); it != mComponents.end(); ++it)
-		{
-			it->second->~BaseComponent();
-			conf_free(it->second);
-		}
+		it->second->~BaseComponent();
+		tf_free(it->second);
 	}
 
+	for (eastl::pair<uint32_t, FCR::ComponentRepresentation*> repMap_iter : mComponentRepresentations)
 	{
-		MutexLock repLock(repMutex);
-		for (eastl::pair<uint32_t, FCR::ComponentRepresentation*> repMap_iter : mComponentRepresentations)
-		{
-			repMap_iter.second->~ComponentRepresentation();
-			conf_free(repMap_iter.second);
-		}
+		repMap_iter.second->~ComponentRepresentation();
+		tf_free(repMap_iter.second);
 	}
 }
 
 Entity* Entity::clone() const
 {
-	Entity* new_entity = conf_placement_new<Entity>(conf_calloc(1, sizeof(Entity)));
+	Entity* new_entity = tf_placement_new<Entity>(tf_calloc(1, sizeof(Entity)));
 	
 	for (ComponentMap::const_iterator it = mComponents.begin(); it != mComponents.end(); ++it)
 	{
@@ -47,17 +41,14 @@ Entity* Entity::clone() const
 
 FCR::ComponentRepresentation* const Entity::getComponentRepresentation(uint32_t const compId)
 {
+	eastl::unordered_map<uint32_t, FCR::ComponentRepresentation*>::iterator iter = mComponentRepresentations.find(compId);
+
+	if (iter == mComponentRepresentations.end())
 	{
-		MutexLock repLock(repMutex);
-		eastl::unordered_map<uint32_t, FCR::ComponentRepresentation*>::iterator iter = mComponentRepresentations.find(compId);
-
-		if (iter == mComponentRepresentations.end())
-		{
-			ASSERT(0); // No such comp representation found!
-		}
-
-		return iter->second;
+		ASSERT(0); // No such comp representation found!
 	}
+
+	return iter->second;
 }
 
 
@@ -71,14 +62,8 @@ void Entity::addComponent(BaseComponent* component)
 		if (const_itr == mComponents.end())
 		{
 			FCR::ComponentRepresentation* r = component->createRepresentation();
-			{
-				MutexLock componentLock(componentMutex);
-				mComponents.insert({ compType, component });
-			}
-			{
-				MutexLock repLock(repMutex);
-				mComponentRepresentations[r->getComponentID()] = r;
-			}
+			mComponents.insert({ compType, component });
+			mComponentRepresentations[r->getComponentID()] = r;
 		}
 		else
 		{
@@ -103,11 +88,18 @@ EntityManager::EntityManager()
 		map.rehash(11083);
 		mComponentViseMap.insert(eastl::pair< uint32_t, ComponentLookup >(pair.first, map));
 	}
+	
+	mEntitiesMutex.Init();
+	mIdMutex.Init();
+	mComponentMutex.Init();
 }
 
 EntityManager::~EntityManager()
 {
 	reset();
+	mEntitiesMutex.Destroy();
+	mIdMutex.Destroy();
+	mComponentMutex.Destroy();
 	ComponentRegistrator::destroyInstance();
 }
 
@@ -120,11 +112,17 @@ void EntityManager::reset()
 		deleteEntity(entity.first);
 	}
 	mEntities.clear();
+
+	// Clear stale component pointers
+	for (eastl::pair<uint32_t, ComponentLookup> pair : mComponentViseMap)
+	{
+		pair.second.clear();
+	}
 }
 
 EntityId EntityManager::createEntity()
 {
-	Entity* new_entity = conf_placement_new<Entity>(conf_calloc(1, sizeof(Entity)));
+	Entity* new_entity = tf_placement_new<Entity>(tf_calloc(1, sizeof(Entity)));
 
 	EntityId id = 0;
 	{
@@ -175,7 +173,7 @@ void EntityManager::deleteEntity(EntityId id)
 		mEntities.erase(entities_iter);
 	}
 	entity->~Entity();
-	conf_free(entity);
+	tf_free(entity);
 }
 
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  * 
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -24,11 +24,11 @@
 
 //--------------------------------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2017 Confetti Interactive Inc.
+// Copyright (C) 2009 - 2017 The Forge Interactive Inc.
 // All rights reserved.
 //
 // This source may not be distributed and/or modified without expressly written permission
-// from Confetti Interactive Inc.
+// from The Forge Interactive Inc.
 //
 //--------------------------------------------------------------------------------------------
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -29,6 +29,13 @@
 
 // ECS
 #include "../../../../Middleware_3/ECS/EntityManager.h"
+#include "../../../../Middleware_3/ECS/ComponentRepresentation.h"
+
+// REPRESENTATIONS
+#include "../17_EntityComponentSystem/Representations/WorldBoundsRepresentation.h"
+#include "../17_EntityComponentSystem/Representations/PositionRepresentation.h"
+#include "../17_EntityComponentSystem/Representations/SpriteRepresentation.h"
+#include "../17_EntityComponentSystem/Representations/MoveRepresentation.h"
 
 // COMPONENTS
 #include "../17_EntityComponentSystem/Components/WorldBoundsComponent.h"
@@ -39,32 +46,20 @@
 //Interfaces
 #include "../../../../Common_3/OS/Interfaces/ICameraController.h"
 #include "../../../../Common_3/OS/Interfaces/IApp.h"
-#include "../../../../Common_3/OS/Interfaces/ILogManager.h"
+#include "../../../../Common_3/OS/Interfaces/ILog.h"
 #include "../../../../Common_3/OS/Interfaces/IFileSystem.h"
-#include "../../../../Common_3/OS/Interfaces/ITimeManager.h"
+#include "../../../../Common_3/OS/Interfaces/ITime.h"
 #include "../../../../Middleware_3/UI/AppUI.h"
 #include "../../../../Common_3/Renderer/IRenderer.h"
 #include "../../../../Common_3/OS/Interfaces/IProfiler.h"
-//#include "../../../../Common_3/Renderer/GpuProfiler.h"
-#include "../../../../Common_3/Renderer/ResourceLoader.h"
+#include "../../../../Common_3/OS/Interfaces/IInput.h"
+#include "../../../../Common_3/Renderer/IResourceLoader.h"
 #include "../../../../Common_3/OS/Core/ThreadSystem.h"
 
-#include "../../../../Common_3/OS/Input/InputSystem.h"
-#include "../../../../Common_3/OS/Input/InputMappings.h"
 //Math
 #include "../../../../Common_3/OS/Math/MathTypes.h"
 
-#include "../../../../Common_3/OS/Interfaces/IMemoryManager.h"    // Must be the last include in a cpp file
-
-// Profilers
-GuiComponent*			pGuiWindow;
-GpuProfiler* pGpuProfiler = NULL;
-HiresTimer   gTimer;
-
-struct VsParams
-{
-	float aspect;
-};
+#include "../../../../Common_3/OS/Interfaces/IMemory.h"    // Must be the last include in a cpp file
 
 struct SpriteData
 {
@@ -76,17 +71,15 @@ struct SpriteData
 };
 
 const uint32_t gImageCount = 3;
-bool           bToggleMicroProfiler = false;
-bool           bPrevToggleMicroProfiler = false;
+ProfileToken   gGpuProfileToken;
 
 Renderer* pRenderer = NULL;
 
 Queue*   pGraphicsQueue = NULL;
-CmdPool* pCmdPool = NULL;
-Cmd**    ppCmds = NULL;
+CmdPool* pCmdPools[gImageCount];
+Cmd*     pCmds[gImageCount];
 
 SwapChain*    pSwapChain = NULL;
-RenderTarget* pDepthBuffer = NULL;
 Fence*        pRenderCompleteFences[gImageCount] = { NULL };
 Semaphore*    pImageAcquiredSemaphore = NULL;
 Semaphore*    pRenderCompleteSemaphores[gImageCount] = { NULL };
@@ -97,13 +90,9 @@ Buffer*   pSpriteIndexBuffer = NULL;
 Pipeline* pSpritePipeline = NULL;
 
 RootSignature*    pRootSignature = NULL;
-DescriptorBinder* pDescriptorBinder = NULL;
+DescriptorSet*    pDescriptorSetTexture = NULL;
+DescriptorSet*    pDescriptorSetUniforms = NULL;
 Sampler*          pLinearClampSampler = NULL;
-DepthState*       pDepthState = NULL;
-RasterizerState*  pRasterizerStateCullNone = NULL;
-BlendState*       pBlendState = NULL;
-
-Buffer* pParamsUbo[gImageCount] = { NULL };
 
 Texture* pSpriteTexture = NULL;
 
@@ -115,20 +104,6 @@ uint        gDrawSpriteCount = 0;
 /// UI
 UIApp gAppUI;
 
-const char* pszBases[FSR_Count] = {
-	"../../../src/17_EntityComponentSystem/",    // FSR_BinShaders
-	"../../../src/17_EntityComponentSystem/",    // FSR_SrcShaders
-	"../../../UnitTestResources/",               // FSR_Textures
-	"../../../UnitTestResources/",               // FSR_Meshes
-	"../../../UnitTestResources/",               // FSR_Builtin_Fonts
-	"../../../src/17_EntityComponentSystem/",    // FSR_GpuConfig
-	"",                                          // FSR_Animation
-	"",                                          // FSR_Audio
-	"../../../src/17_EntityComponentSystem/",    // FSR_OtherFiles - mentioned entities directory
-	"../../../../../Middleware_3/Text/",         // FSR_MIDDLEWARE_TEXT
-	"../../../../../Middleware_3/UI/",           // FSR_MIDDLEWARE_UI
-};
-
 TextDrawDesc gFrameTimeDraw = TextDrawDesc(0, 0xff00ffff, 18);
 
 // Based on: https://github.com/aras-p/dod-playground
@@ -136,22 +111,17 @@ static float RandomFloat01() { return (float)rand() / (float)RAND_MAX; }
 static float RandomFloat(float from, float to) { return RandomFloat01() * (to - from) + from; }
 
 const uint MaxSpriteCount = 11000;
-#ifdef _DEBUG
-const uint SpriteEntityCount = 5000;
-#else
 const uint SpriteEntityCount = 10000;
-#endif
 const uint AvoidCount = 20;
 
 static Entity* worldBoundsEntity;
 static Entity* spriteEntities[SpriteEntityCount];
 static Entity* avoidEntities[AvoidCount];
 
-File* pFileSystem			  = nullptr;
 EntityManager* pEntityManager = nullptr;
 
 ThreadSystem* pThreadSystem = nullptr;
-bool multiThread			= false;
+bool multiThread			= true;
 
 GuiComponent* GUIWindow = nullptr;
 
@@ -192,49 +162,70 @@ struct timeAndBounds {
 
 struct MoveSystem
 {
-	static void Update(float deltaTime)
+	struct Task
+	{
+		size_t         start;
+		size_t         end;
+		timeAndBounds* data;
+	};
+
+	Task          tasks[MAX_LOAD_THREADS + 2] = {};
+
+	void Update(float deltaTime)
 	{
 		const WorldBoundsComponent& bounds = *worldBoundsEntity->getComponent<WorldBoundsComponent>();
 
-		timeAndBounds data		= { spriteEntities, deltaTime, &bounds};
+		timeAndBounds moveData = { spriteEntities, deltaTime, &bounds };
 		timeAndBounds avoidData = { avoidEntities, deltaTime, &bounds };
 		
-		if (multiThread)
+		// 1 thread used by resource loader
+		const uint32_t numThreads = max(1u, getThreadSystemThreadCount(pThreadSystem) - 1);
+		const uint32_t entitiesPerThread = SpriteEntityCount / (numThreads + 1);
+
+		// Make sure there is enough workload for parallel processing
+		if (multiThread && entitiesPerThread < SpriteEntityCount / 2)
 		{
-			for (size_t i = 0; i < SpriteEntityCount; ++i)
+			uint32_t taskCount = 0;
+
+			for (taskCount = 0; taskCount < numThreads; ++taskCount)
 			{
-				addThreadSystemTask(pThreadSystem, &MoveSystem::threadedUpdate, &data, i);
+				Task* task = &tasks[taskCount];
+				task->start = taskCount * entitiesPerThread;
+				task->end = min((size_t)SpriteEntityCount, task->start + entitiesPerThread);
+				task->data = &moveData;
+				addThreadSystemTask(pThreadSystem, &memberTaskFunc<MoveSystem, &MoveSystem::threadedUpdate>, this, taskCount);
 			}
 
-			for (size_t i = 0; i < AvoidCount; ++i)
-			{
-				addThreadSystemTask(pThreadSystem, &MoveSystem::threadedUpdate, &avoidData, i);
-			}
+			// Remaining entities on main thread
+			tasks[taskCount] = { tasks[taskCount - 1].end, SpriteEntityCount, &moveData };
+			threadedUpdate(taskCount++);
+			
+			tasks[taskCount] = { 0, AvoidCount, &avoidData };
+			threadedUpdate(taskCount++);
 
 			waitThreadSystemIdle(pThreadSystem);
 		}
 		else
 		{
-			for (size_t i = 0; i < SpriteEntityCount; ++i)
-			{
-				threadedUpdate(&data, i);
-			}
+			tasks[0] = { 0, SpriteEntityCount, &moveData };
+			threadedUpdate(0);
 
-			for (size_t i = 0; i < AvoidCount; ++i)
-			{
-				threadedUpdate(&avoidData, i);
-			}
+			tasks[1] = { 0, AvoidCount, &avoidData };
+			threadedUpdate(1);
 		}
 	}
 
-	static void threadedUpdate(void* pData, uintptr_t id)
-	{	
-		timeAndBounds& data			= *(timeAndBounds*)pData;
-		Entity* pEntity				= (data.entities)[id];
-		PositionComponent& position = *(pEntity->getComponent<PositionComponent>());
-		MoveComponent& move			= *(pEntity->getComponent<MoveComponent>());
+	void threadedUpdate(uintptr_t id)
+	{
+		const Task* task = &tasks[id];
+		for (uintptr_t i = task->start; i < task->end; ++i)
+		{
+			Entity* pEntity = (task->data->entities)[i];
+			PositionComponent& position = *(pEntity->getComponent<PositionComponent>());
+			MoveComponent& move = *(pEntity->getComponent<MoveComponent>());
 
-		MoveEntities(position, move, data.deltaTime, *data.bounds);
+			MoveEntities(position, move, task->data->deltaTime, *task->data->bounds);
+		}
 	}
 };
 
@@ -247,18 +238,40 @@ static float DistanceSq(const PositionComponent& a, const PositionComponent& b)
 
 struct AvoidanceSystem
 {
+	struct Task
+	{
+		size_t         start;
+		size_t         end;
+		timeAndBounds* data;
+	};
+
+	Task tasks[MAX_LOAD_THREADS + 1] = {};
+
 	static eastl::vector<float>    avoidDistanceList;
-	eastl::vector<Entity*>		   avoidList;
 
 	Mutex emplaceMutex;
+	
+	bool init()
+	{
+		return emplaceMutex.Init();
+	}
+	
+	void exit()
+	{
+		emplaceMutex.Destroy();
+	}
 
 	void addAvoidThisObjectToSystem(Entity* entity, float distance)
 	{
 		{
 			MutexLock lock(emplaceMutex);
-			avoidList.emplace_back(entity);
 			avoidDistanceList.emplace_back(distance * distance);
 		}
+	}
+
+	static void removeAllObjects()
+	{
+		avoidDistanceList.set_capacity(0);
 	}
 
 	static void resolveCollision(Entity* pEntity, float deltaTime)
@@ -275,52 +288,70 @@ struct AvoidanceSystem
 		pos.y += move.vely * deltaTime * 1.1f;
 	}
 
-	static void Update(float deltaTime)
+	void Update(float deltaTime)
 	{
 		const WorldBoundsComponent& bounds = *worldBoundsEntity->getComponent<WorldBoundsComponent>();
 
 		timeAndBounds data = { spriteEntities, deltaTime, &bounds };
 		
-		if (multiThread)
+		// 1 thread used by resource loader
+		const uint32_t numThreads = max(1u, getThreadSystemThreadCount(pThreadSystem) - 1);
+		const uint32_t entitiesPerThread = SpriteEntityCount / (numThreads + 1);
+
+		// Make sure there is enough workload for parallel processing
+		if (multiThread && entitiesPerThread < SpriteEntityCount / 2)
 		{
-			for (size_t i = 0; i < SpriteEntityCount; ++i)
+			uint32_t taskCount = 0;
+
+			for (taskCount = 0; taskCount < numThreads; ++taskCount)
 			{
-				addThreadSystemTask(pThreadSystem, &AvoidanceSystem::threadedUpdate, &data, i);
+				Task* task = &tasks[taskCount];
+				task->start = taskCount * entitiesPerThread;
+				task->end = min((size_t)SpriteEntityCount, task->start + entitiesPerThread);
+				task->data = &data;
+				addThreadSystemTask(pThreadSystem, &memberTaskFunc<AvoidanceSystem, &AvoidanceSystem::threadedUpdate>, this, taskCount);
 			}
+
+			// Remaining entities on main thread
+			tasks[taskCount] = { tasks[taskCount - 1].end, SpriteEntityCount, &data };
+			threadedUpdate(taskCount++);
 
 			waitThreadSystemIdle(pThreadSystem);
 		}
 		else
 		{
-			for (size_t i = 0; i < SpriteEntityCount; ++i)
-			{
-				threadedUpdate(&data, i);
-			}
+			tasks[0] = { 0, SpriteEntityCount, &data };
+			threadedUpdate(0);
 		}
 	}
 
-	static void threadedUpdate(void* pData, uintptr_t i)
+	void threadedUpdate(uintptr_t id)
 	{
-		timeAndBounds& data			= *(timeAndBounds*)pData;
-		Entity* pEntity				= spriteEntities[i];
-		PositionComponent& position = *(pEntity->getComponent<PositionComponent>());
+		const Task* task = &tasks[id];
+		const timeAndBounds& data = *task->data;
 
-		for (size_t j = 0; j < AvoidCount; ++j)
+		for (uintptr_t i = task->start; i < task->end; ++i)
 		{
-			Entity*					pAvoidEntity = avoidEntities[j];
-			float                    avDistance  = avoidDistanceList[j];
-			PositionComponent&	  avoidPosition  = *(pAvoidEntity->getComponent<PositionComponent>());
+			Entity* pEntity = spriteEntities[i];
+			PositionComponent& position = *(pEntity->getComponent<PositionComponent>());
 
-			// is our position closer to "thing to avoid" position than the avoid distance?
-			if (DistanceSq(position, avoidPosition) < avDistance)
+			for (size_t j = 0; j < AvoidCount; ++j)
 			{
-				resolveCollision(pEntity, data.deltaTime);
-				// also make our sprite take the color of the thing we just bumped into
-				SpriteComponent& avoidSprite = *(pAvoidEntity->getComponent<SpriteComponent>());
-				SpriteComponent& mySprite	 = *(pEntity->getComponent<SpriteComponent>());
-				mySprite.colorR = avoidSprite.colorR;
-				mySprite.colorG = avoidSprite.colorG;
-				mySprite.colorB = avoidSprite.colorB;
+				Entity*					pAvoidEntity = avoidEntities[j];
+				float                    avDistance = avoidDistanceList[j];
+				PositionComponent&	  avoidPosition = *(pAvoidEntity->getComponent<PositionComponent>());
+
+				// is our position closer to "thing to avoid" position than the avoid distance?
+				if (DistanceSq(position, avoidPosition) < avDistance)
+				{
+					resolveCollision(pEntity, data.deltaTime);
+					// also make our sprite take the color of the thing we just bumped into
+					SpriteComponent& avoidSprite = *(pAvoidEntity->getComponent<SpriteComponent>());
+					SpriteComponent& mySprite = *(pEntity->getComponent<SpriteComponent>());
+					mySprite.colorR = avoidSprite.colorR;
+					mySprite.colorG = avoidSprite.colorG;
+					mySprite.colorB = avoidSprite.colorB;
+				}
 			}
 		}
 	}
@@ -328,8 +359,8 @@ struct AvoidanceSystem
 
 eastl::vector<float>    AvoidanceSystem::avoidDistanceList;
 
-static MoveSystem      moveSystem;
-static AvoidanceSystem avoidanceSystem;
+static MoveSystem*      pMoveSystem;
+static AvoidanceSystem* pAvoidanceSystem;
 
 struct CreationData
 {
@@ -342,7 +373,7 @@ static void createEntities(void* pData, uintptr_t i)
 {
 	// NOT DESERIALIZED WAY TO CREATE ENTITIES
 	//spriteEntities[i] = pEntityManager->createEntity();
-	
+
 	CreationData data = *(CreationData*)pData;
 
 	// DESERIALIZED WAY
@@ -368,7 +399,7 @@ static void createEntities(void* pData, uintptr_t i)
 		sprite = &( pEntityManager->addComponentToEntity<SpriteComponent>(entityId) );
 
 	if (strcmp(data.entityTypeName, "avoid")) {
-		avoidanceSystem.addAvoidThisObjectToSystem((data.entities)[i], 1.3f);
+		pAvoidanceSystem->addAvoidThisObjectToSystem((data.entities)[i], 1.3f);
 		
 		sprite->colorR = 1.0f;
 		sprite->colorG = 1.0f;
@@ -392,8 +423,19 @@ class EntityComponentSystem: public IApp
 	public:
 	bool Init()
 	{
-		pEntityManager = conf_new(EntityManager);
-		pFileSystem	   = conf_new(File);
+		// FILE PATHS
+		fsSetPathForResourceDir(pSystemFileIO, RM_CONTENT, RD_SHADER_SOURCES, "Shaders");
+		fsSetPathForResourceDir(pSystemFileIO, RM_DEBUG,   RD_SHADER_BINARIES, "CompiledShaders");
+		fsSetPathForResourceDir(pSystemFileIO, RM_CONTENT, RD_GPU_CONFIG, "GPUCfg");
+		fsSetPathForResourceDir(pSystemFileIO, RM_CONTENT, RD_TEXTURES, "Textures");
+		fsSetPathForResourceDir(pSystemFileIO, RM_CONTENT, RD_FONTS, "Fonts");
+
+		SpriteComponentRepresentation::BUILD_VAR_REPRESENTATIONS();
+		MoveComponentRepresentation::BUILD_VAR_REPRESENTATIONS();
+		PositionComponentRepresentation::BUILD_VAR_REPRESENTATIONS();
+		WorldBoundsComponentRepresentation::BUILD_VAR_REPRESENTATIONS();
+
+		pEntityManager = tf_new(EntityManager);
 
 		// window and renderer setup
 		RendererDesc settings = { 0 };
@@ -403,10 +445,18 @@ class EntityComponentSystem: public IApp
 			return false;
 
 		QueueDesc queueDesc = {};
-		queueDesc.mType = CMD_POOL_DIRECT;
+		queueDesc.mType = QUEUE_TYPE_GRAPHICS;
+		queueDesc.mFlag = QUEUE_FLAG_INIT_MICROPROFILE;
 		addQueue(pRenderer, &queueDesc, &pGraphicsQueue);
-		addCmdPool(pRenderer, pGraphicsQueue, false, &pCmdPool);
-		addCmd_n(pCmdPool, false, gImageCount, &ppCmds);
+		for (uint32_t i = 0; i < gImageCount; ++i)
+		{
+			CmdPoolDesc cmdPoolDesc = {};
+			cmdPoolDesc.pQueue = pGraphicsQueue;
+			addCmdPool(pRenderer, &cmdPoolDesc, &pCmdPools[i]);
+			CmdDesc cmdDesc = {};
+			cmdDesc.pPool = pCmdPools[i];
+			addCmd(pRenderer, &cmdDesc, &pCmds[i]);
+		}
 
 		for (uint32_t i = 0; i < gImageCount; ++i)
 		{
@@ -417,15 +467,19 @@ class EntityComponentSystem: public IApp
 
 		initResourceLoaderInterface(pRenderer);
 
-		initProfiler(pRenderer, gImageCount);
-		profileRegisterInput();
+		if (!gAppUI.Init(pRenderer))
+		  return false;
 
-		addGpuProfiler(pRenderer, pGraphicsQueue, &pGpuProfiler, "GpuProfiler");
+		gAppUI.LoadFont("TitilliumText/TitilliumText-Bold.otf");
+
+		initProfiler();
+
+		gGpuProfileToken = addGpuProfiler(pRenderer, pGraphicsQueue, "Graphics");
 
 		// TODO: rename to sprite
 		ShaderLoadDesc spriteShader = {};
-		spriteShader.mStages[0] = { "basic.vert", NULL, 0, FSR_SrcShaders };
-		spriteShader.mStages[1] = { "basic.frag", NULL, 0, FSR_SrcShaders };
+		spriteShader.mStages[0] = { "basic.vert", NULL, 0 };
+		spriteShader.mStages[1] = { "basic.frag", NULL, 0 };
 
 		addShader(pRenderer, &spriteShader, &pSpriteShader);
 
@@ -444,30 +498,12 @@ class EntityComponentSystem: public IApp
 		rootDesc.ppStaticSamplers = &pLinearClampSampler;
 		addRootSignature(pRenderer, &rootDesc, &pRootSignature);
 
-		DescriptorBinderDesc descriptorBinderDesc = { pRootSignature };
-		addDescriptorBinder(pRenderer, 0, 1, &descriptorBinderDesc, &pDescriptorBinder);
+		DescriptorSetDesc setDesc = { pRootSignature, DESCRIPTOR_UPDATE_FREQ_NONE, 1 };
+		addDescriptorSet(pRenderer, &setDesc, &pDescriptorSetTexture);
+		setDesc = { pRootSignature, DESCRIPTOR_UPDATE_FREQ_PER_FRAME, gImageCount };
+		addDescriptorSet(pRenderer, &setDesc, &pDescriptorSetUniforms);
 
-		RasterizerStateDesc rasterizerStateDesc = {};
-		rasterizerStateDesc.mCullMode = CULL_MODE_NONE;
-		addRasterizerState(pRenderer, &rasterizerStateDesc, &pRasterizerStateCullNone);
-
-		DepthStateDesc depthStateDesc = {};
-		depthStateDesc.mDepthTest = true;
-		depthStateDesc.mDepthWrite = true;
-		depthStateDesc.mDepthFunc = CMP_LEQUAL;
-		addDepthState(pRenderer, &depthStateDesc, &pDepthState);
-
-		BlendStateDesc blendStateDesc = {};
-		blendStateDesc.mSrcAlphaFactors[0] = BC_SRC_ALPHA;
-		blendStateDesc.mDstAlphaFactors[0] = BC_ONE_MINUS_SRC_ALPHA;
-		blendStateDesc.mSrcFactors[0] = BC_SRC_ALPHA;
-		blendStateDesc.mDstFactors[0] = BC_ONE_MINUS_SRC_ALPHA;
-		blendStateDesc.mMasks[0] = ALL;
-		blendStateDesc.mRenderTargetMask = BLEND_STATE_TARGET_0;
-		blendStateDesc.mIndependentBlend = false;
-		addBlendState(pRenderer, &blendStateDesc, &pBlendState);
-
-		gSpriteData = (SpriteData*)conf_malloc(MaxSpriteCount * sizeof(SpriteData));
+		gSpriteData = (SpriteData*)tf_malloc(MaxSpriteCount * sizeof(SpriteData));
 
 		// Instance buffer
 		BufferLoadDesc spriteVbDesc = {};
@@ -482,75 +518,47 @@ class EntityComponentSystem: public IApp
 		for (uint32_t i = 0; i < gImageCount; ++i)
 		{
 			spriteVbDesc.ppBuffer = &pSpriteVertexBuffers[i];
-			addResource(&spriteVbDesc);
+			addResource(&spriteVbDesc, NULL);
 		}
 
 		// Index buffer
-		uint16_t indices[] = {
+		uint16_t indices[] =
+		{
 			0, 1, 2, 2, 1, 3,
 		};
 		BufferLoadDesc spriteIBDesc = {};
 		spriteIBDesc.mDesc.mDescriptors = DESCRIPTOR_TYPE_INDEX_BUFFER;
 		spriteIBDesc.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_GPU_ONLY;
 		spriteIBDesc.mDesc.mSize = sizeof(indices);
-		spriteIBDesc.mDesc.mIndexType = INDEX_TYPE_UINT16;
 		spriteIBDesc.pData = indices;
 		spriteIBDesc.ppBuffer = &pSpriteIndexBuffer;
-		addResource(&spriteIBDesc);
-
-		// Ubo
-		BufferLoadDesc ubDesc = {};
-		ubDesc.mDesc.mDescriptors = DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		ubDesc.mDesc.mMemoryUsage = RESOURCE_MEMORY_USAGE_CPU_TO_GPU;
-		ubDesc.mDesc.mSize = sizeof(VsParams);
-		ubDesc.mDesc.mFlags = BUFFER_CREATION_FLAG_PERSISTENT_MAP_BIT;
-		ubDesc.pData = NULL;
-		for (uint32_t i = 0; i < gImageCount; ++i)
-		{
-			ubDesc.ppBuffer = &pParamsUbo[i];
-			addResource(&ubDesc);
-		}
+		addResource(&spriteIBDesc, NULL);
 
 		// Sprites texture
 		TextureLoadDesc textureDesc = {};
-		textureDesc.mRoot = FSR_Textures;
 		textureDesc.ppTexture = &pSpriteTexture;
-		textureDesc.pFilename = "sprites";
-		addResource(&textureDesc);
-
-		finishResourceLoading();
+		textureDesc.pFileName = "sprites";
+		addResource(&textureDesc, NULL);
 
 		initThreadSystem(&pThreadSystem);
-
-		if (!gAppUI.Init(pRenderer))
-			return false;
-
-		gAppUI.LoadFont("TitilliumText/TitilliumText-Bold.otf", FSR_Builtin_Fonts);
 
 	/************************************************************************/
 	// GUI
 	/************************************************************************/
-
 		GuiDesc guiDesc = {};
-		guiDesc.mStartSize = vec2(300.0f, 250.0f);
-		guiDesc.mStartPosition = vec2(0.0f, guiDesc.mStartSize.getY());
-		pGuiWindow = gAppUI.AddGuiComponent(GetName(), &guiDesc);
-
-		pGuiWindow->AddWidget(CheckboxWidget("Toggle Micro Profiler", &bToggleMicroProfiler)); 
-		
-		const TextDrawDesc UIPanelWindowTitleTextDesc = { 0, 0xffff00ff, 16 };
-
-		float   dpiScale = getDpiScale().x;
-		vec2    UIPosition = { mSettings.mWidth * 0.01f, mSettings.mHeight * 0.5f };
-		vec2    UIPanelSize = vec2(650.f, 1000.f) / dpiScale;
-		GuiDesc guiDesc2(UIPosition, UIPanelSize, UIPanelWindowTitleTextDesc);
-		GUIWindow = gAppUI.AddGuiComponent("MultiThread", &guiDesc2);
+		guiDesc.mStartPosition = vec2(mSettings.mWidth * 0.01f, mSettings.mHeight * 0.1f);
+		GUIWindow = gAppUI.AddGuiComponent("MT", &guiDesc);
 		
 		CheckboxWidget Checkbox("Threading", &multiThread);
 		GUIWindow->AddWidget(Checkbox);
 
 
 		// Create entities
+		pAvoidanceSystem = tf_new(AvoidanceSystem);
+		pAvoidanceSystem->init();
+		
+		pMoveSystem = tf_new(MoveSystem);
+
 		EntityId worldBoundsEntityId = pEntityManager->createEntity();
 		worldBoundsEntity = pEntityManager->getEntityById(worldBoundsEntityId);
 		WorldBoundsComponent* bounds = &(pEntityManager->addComponentToEntity<WorldBoundsComponent>(worldBoundsEntityId));
@@ -565,27 +573,47 @@ class EntityComponentSystem: public IApp
 		CreationData data	   = { spriteEntities, bounds, "sprite" };
 		CreationData avoidData = { avoidEntities,  bounds, "avoid" };
 		
-		if (multiThread)
+		for (size_t i = 0; i < SpriteEntityCount; ++i)
 		{
-			for (size_t i = 0; i < SpriteEntityCount; ++i) {
-				addThreadSystemTask(pThreadSystem, &createEntities, &data, i);
-			}
-			
-			for (size_t i = 0; i < AvoidCount; ++i) {
-				addThreadSystemTask(pThreadSystem, &createEntities, &avoidData, i);
-			}
-
-			waitThreadSystemIdle(pThreadSystem);
+			createEntities(&data, i);
 		}
-		else
-		{
-			for (size_t i = 0; i < SpriteEntityCount; ++i) {
-				createEntities(&data, i);
-			}
 
-			for (size_t i = 0; i < AvoidCount; ++i) {
-				createEntities(&avoidData, i);
-			}
+		for (size_t i = 0; i < AvoidCount; ++i)
+		{
+			createEntities(&avoidData, i);
+		}
+
+		if (!initInputSystem(pWindow))
+			return false;
+
+		// App Actions
+		InputActionDesc actionDesc = { InputBindings::BUTTON_FULLSCREEN, [](InputActionContext* ctx) { toggleFullscreen(((IApp*)ctx->pUserData)->pWindow); return true; }, this };
+		addInputAction(&actionDesc);
+		actionDesc = { InputBindings::BUTTON_EXIT, [](InputActionContext* ctx) { requestShutdown(); return true; } };
+		addInputAction(&actionDesc);
+		actionDesc =
+		{
+			InputBindings::BUTTON_ANY, [](InputActionContext* ctx)
+			{
+				bool capture = gAppUI.OnButton(ctx->mBinding, ctx->mBool, ctx->pPosition);
+				setEnableCaptureInput(capture && INPUT_ACTION_PHASE_CANCELED != ctx->mPhase);
+				return true;
+			}, this
+		};
+		addInputAction(&actionDesc);
+
+		waitForAllResourceLoads();
+		
+		// Prepare descriptor sets
+		DescriptorData params[1] = {};
+		params[0].pName = "uTexture0";
+		params[0].ppTextures = &pSpriteTexture;
+		updateDescriptorSet(pRenderer, 0, pDescriptorSetTexture, 1, params);
+		for (uint32_t i = 0; i < gImageCount; ++i)
+		{
+			params[0].pName = "instanceBuffer";
+			params[0].ppBuffers = &pSpriteVertexBuffers[i];
+			updateDescriptorSet(pRenderer, i, pDescriptorSetUniforms, 1, params);
 		}
 
 		return true;
@@ -593,33 +621,34 @@ class EntityComponentSystem: public IApp
 
 	void Exit()
 	{
+		exitInputSystem();
+
 		shutdownThreadSystem(pThreadSystem);
 		
-		conf_delete(pEntityManager);
-		conf_delete(pFileSystem);
+		pAvoidanceSystem->exit();
+		tf_delete(pAvoidanceSystem);
+		tf_delete(pMoveSystem);
+		
+		tf_delete(pEntityManager);
 
 		waitQueueIdle(pGraphicsQueue);
 
-		exitProfiler(pRenderer);
+		exitProfiler();
 
 		gAppUI.Exit();
 
 		for (uint32_t i = 0; i < gImageCount; ++i)
 		{
 			removeResource(pSpriteVertexBuffers[i]);
-			removeResource(pParamsUbo[i]);
 		}
 		removeResource(pSpriteTexture);
 		removeShader(pRenderer, pSpriteShader);
 		removeResource(pSpriteIndexBuffer);
 
+		removeDescriptorSet(pRenderer, pDescriptorSetTexture);
+		removeDescriptorSet(pRenderer, pDescriptorSetUniforms);
 		removeSampler(pRenderer, pLinearClampSampler);
 		removeRootSignature(pRenderer, pRootSignature);
-		removeDescriptorBinder(pRenderer, pDescriptorBinder);
-		
-		removeDepthState(pDepthState);
-		removeRasterizerState(pRasterizerStateCullNone);
-		removeBlendState(pBlendState);
 
 		for (uint32_t i = 0; i < gImageCount; ++i)
 		{
@@ -628,16 +657,25 @@ class EntityComponentSystem: public IApp
 		}
 		removeSemaphore(pRenderer, pImageAcquiredSemaphore);
 
-		removeCmd_n(pCmdPool, gImageCount, ppCmds);
-		removeCmdPool(pRenderer, pCmdPool);
+		for (uint32_t i = 0; i < gImageCount; ++i)
+		{
+			removeCmd(pRenderer, pCmds[i]);
+			removeCmdPool(pRenderer, pCmdPools[i]);
+		}
 
-		removeGpuProfiler(pRenderer, pGpuProfiler);
-		removeResourceLoaderInterface(pRenderer);
-		removeQueue(pGraphicsQueue);
+		
+        exitResourceLoaderInterface(pRenderer);
+		removeQueue(pRenderer, pGraphicsQueue);
 		removeRenderer(pRenderer);
 
-		conf_free(gSpriteData);
+		tf_free(gSpriteData);
 		gSpriteData = NULL;
+
+		AvoidanceSystem::removeAllObjects();
+		SpriteComponentRepresentation::DESTROY_VAR_REPRESENTATIONS();
+		MoveComponentRepresentation::DESTROY_VAR_REPRESENTATIONS();
+		PositionComponentRepresentation::DESTROY_VAR_REPRESENTATIONS();
+		WorldBoundsComponentRepresentation::DESTROY_VAR_REPRESENTATIONS();
 	}
 
 	bool Load()
@@ -645,11 +683,26 @@ class EntityComponentSystem: public IApp
 		if (!addMainSwapChain())
 			return false;
 
-		if (!addDepthBuffer())
+		if (!gAppUI.Load(pSwapChain->ppRenderTargets))
 			return false;
 
-		if (!gAppUI.Load(pSwapChain->ppSwapchainRenderTargets))
-			return false;
+		loadProfilerUI(&gAppUI, mSettings.mWidth, mSettings.mHeight);
+
+		RasterizerStateDesc rasterizerStateDesc = {};
+		rasterizerStateDesc.mCullMode = CULL_MODE_NONE;
+
+		DepthStateDesc depthStateDesc = {};
+		depthStateDesc.mDepthTest = false;
+		depthStateDesc.mDepthWrite = false;
+
+		BlendStateDesc blendStateDesc = {};
+		blendStateDesc.mSrcAlphaFactors[0] = BC_SRC_ALPHA;
+		blendStateDesc.mDstAlphaFactors[0] = BC_ONE_MINUS_SRC_ALPHA;
+		blendStateDesc.mSrcFactors[0] = BC_SRC_ALPHA;
+		blendStateDesc.mDstFactors[0] = BC_ONE_MINUS_SRC_ALPHA;
+		blendStateDesc.mMasks[0] = ALL;
+		blendStateDesc.mRenderTargetMask = BLEND_STATE_TARGET_0;
+		blendStateDesc.mIndependentBlend = false;
 
 		// VertexLayout for sprite drawing.
 		PipelineDesc desc = {};
@@ -657,16 +710,15 @@ class EntityComponentSystem: public IApp
 		GraphicsPipelineDesc& pipelineSettings = desc.mGraphicsDesc;
 		pipelineSettings.mPrimitiveTopo = PRIMITIVE_TOPO_TRI_LIST;
 		pipelineSettings.mRenderTargetCount = 1;
-		pipelineSettings.pDepthState = pDepthState;
-		pipelineSettings.pColorFormats = &pSwapChain->ppSwapchainRenderTargets[0]->mDesc.mFormat;
-		pipelineSettings.pSrgbValues = &pSwapChain->ppSwapchainRenderTargets[0]->mDesc.mSrgb;
-		pipelineSettings.mSampleCount = pSwapChain->ppSwapchainRenderTargets[0]->mDesc.mSampleCount;
-		pipelineSettings.mSampleQuality = pSwapChain->ppSwapchainRenderTargets[0]->mDesc.mSampleQuality;
-		pipelineSettings.mDepthStencilFormat = pDepthBuffer->mDesc.mFormat;
+		pipelineSettings.pDepthState = &depthStateDesc;
+		pipelineSettings.pColorFormats = &pSwapChain->ppRenderTargets[0]->mFormat;
+		pipelineSettings.mSampleCount = pSwapChain->ppRenderTargets[0]->mSampleCount;
+		pipelineSettings.mSampleQuality = pSwapChain->ppRenderTargets[0]->mSampleQuality;
+		pipelineSettings.mDepthStencilFormat = TinyImageFormat_UNDEFINED;
 		pipelineSettings.pRootSignature = pRootSignature;
 		pipelineSettings.pShaderProgram = pSpriteShader;
-		pipelineSettings.pRasterizerState = pRasterizerStateCullNone;
-		pipelineSettings.pBlendState = pBlendState;
+		pipelineSettings.pRasterizerState = &rasterizerStateDesc;
+		pipelineSettings.pBlendState = &blendStateDesc;
 		addPipeline(pRenderer, &desc, &pSpritePipeline);
 
 		return true;
@@ -676,23 +728,25 @@ class EntityComponentSystem: public IApp
 	{
 		waitQueueIdle(pGraphicsQueue);
 
+		unloadProfilerUI();
 		gAppUI.Unload();
 
 		removePipeline(pRenderer, pSpritePipeline);
 
 		removeSwapChain(pRenderer, pSwapChain);
-		removeRenderTarget(pRenderer, pDepthBuffer);
 	}
 
 	void Update(float deltaTime)
 	{
+		updateInputSystem(mSettings.mWidth, mSettings.mHeight);
+
 		// Scene Update
 		static float currentTime = 0.0f;
 		currentTime += deltaTime * 1000.0f;
 
 		// update object systems
-		moveSystem.Update(deltaTime * 3.0f);
-		avoidanceSystem.Update(deltaTime * 3.0f);
+		pMoveSystem->Update(deltaTime * 3.0f);
+		pAvoidanceSystem->Update(deltaTime * 3.0f);
 
 		// Iterate all entities with transform and plane component
 		gDrawSpriteCount = 0;
@@ -728,39 +782,26 @@ class EntityComponentSystem: public IApp
 			spriteData.sprite = (float)sprite.spriteIndex;
 		}
 
-		// ProfileSetDisplayMode()
-		// TODO: need to change this better way 
-		if (bToggleMicroProfiler != bPrevToggleMicroProfiler)
-		{
-			Profile& S = *ProfileGet();
-			int nValue = bToggleMicroProfiler ? 1 : 0;
-			nValue = nValue >= 0 && nValue < P_DRAW_SIZE ? nValue : S.nDisplay;
-			S.nDisplay = nValue;
-
-			bPrevToggleMicroProfiler = bToggleMicroProfiler;
-		}
-
 		gAppUI.Update(deltaTime);
 	}
 
 	void Draw()
 	{
-		gTimer.GetUSec(true);
-		acquireNextImage(pRenderer, pSwapChain, pImageAcquiredSemaphore, NULL, &gFrameIndex);
+		uint32_t swapchainImageIndex;
+		acquireNextImage(pRenderer, pSwapChain, pImageAcquiredSemaphore, NULL, &swapchainImageIndex);
 
 		// Update uniform buffers.
 		const float w = (float)mSettings.mWidth;
 		const float h = (float)mSettings.mHeight;
-		VsParams    vs_params;
-		vs_params.aspect = w / h;
-		BufferUpdateDesc uboUpdateDesc = { pParamsUbo[gFrameIndex], &vs_params };
-		updateResource(&uboUpdateDesc);
+		float aspect = w / h;
 
 		// Update vertex buffer
-		assert(gDrawSpriteCount >= 0 && gDrawSpriteCount <= MaxSpriteCount);
-		BufferUpdateDesc vboUpdateDesc = { pSpriteVertexBuffers[gFrameIndex], gSpriteData };
-		vboUpdateDesc.mSize = gDrawSpriteCount * sizeof(SpriteData);
-		updateResource(&vboUpdateDesc);
+		SyncToken updateComplete = {};
+		ASSERT(gDrawSpriteCount >= 0 && gDrawSpriteCount <= MaxSpriteCount);
+		BufferUpdateDesc vboUpdateDesc = { pSpriteVertexBuffers[gFrameIndex] };
+		beginUpdateResource(&vboUpdateDesc);
+		memcpy(vboUpdateDesc.pMappedData, gSpriteData, gDrawSpriteCount * sizeof(SpriteData));
+		endUpdateResource(&vboUpdateDesc, &updateComplete);
 
 		// Stall if CPU is running "Swap Chain Buffer Count" frames ahead of GPU
 		Fence*      pNextFence = pRenderCompleteFences[gFrameIndex];
@@ -771,7 +812,9 @@ class EntityComponentSystem: public IApp
 			waitForFences(pRenderer, 1, &pNextFence);
 		}
 
-		RenderTarget* pRenderTarget = pSwapChain->ppSwapchainRenderTargets[gFrameIndex];
+		resetCmdPool(pRenderer, pCmdPools[gFrameIndex]);
+
+		RenderTarget* pRenderTarget = pSwapChain->ppRenderTargets[swapchainImageIndex];
 
 		Semaphore* pRenderCompleteSemaphore = pRenderCompleteSemaphores[gFrameIndex];
 		Fence*     pRenderCompleteFence = pRenderCompleteFences[gFrameIndex];
@@ -779,45 +822,30 @@ class EntityComponentSystem: public IApp
 		// simply record the screen cleaning command
 		LoadActionsDesc loadActions = {};
 		loadActions.mLoadActionsColor[0] = LOAD_ACTION_CLEAR;
-		loadActions.mClearColorValues[0].r = 0.1f;
-		loadActions.mClearColorValues[0].g = 0.1f;
-		loadActions.mClearColorValues[0].b = 0.1f;
-		loadActions.mClearColorValues[0].a = 1.0f;
-		loadActions.mLoadActionDepth = LOAD_ACTION_CLEAR;
-		loadActions.mClearDepth.depth = 1.0f;
-		loadActions.mClearDepth.stencil = 0;
+		loadActions.mClearColorValues[0] = pRenderTarget->mClearValue;
 
-		Cmd* cmd = ppCmds[gFrameIndex];
+		Cmd* cmd = pCmds[gFrameIndex];
 		beginCmd(cmd);
-		cmdBeginGpuFrameProfile(cmd, pGpuProfiler);
+		cmdBeginGpuFrameProfile(cmd, gGpuProfileToken);
 
-		TextureBarrier barriers[] = {
-			{ pRenderTarget->pTexture, RESOURCE_STATE_RENDER_TARGET },
-			{ pDepthBuffer->pTexture, RESOURCE_STATE_DEPTH_WRITE },
+		RenderTargetBarrier barriers[] = {
+			{ pRenderTarget, RESOURCE_STATE_PRESENT, RESOURCE_STATE_RENDER_TARGET },
 		};
-		cmdResourceBarrier(cmd, 0, NULL, 2, barriers, false);
+		cmdResourceBarrier(cmd, 0, NULL, 0, NULL, 1, barriers);
 
-		cmdBindRenderTargets(cmd, 1, &pRenderTarget, pDepthBuffer, &loadActions, NULL, NULL, -1, -1);
-		cmdSetViewport(cmd, 0.0f, 0.0f, (float)pRenderTarget->mDesc.mWidth, (float)pRenderTarget->mDesc.mHeight, 0.0f, 1.0f);
-		cmdSetScissor(cmd, 0, 0, pRenderTarget->mDesc.mWidth, pRenderTarget->mDesc.mHeight);
+		cmdBindRenderTargets(cmd, 1, &pRenderTarget, NULL, &loadActions, NULL, NULL, -1, -1);
+		cmdSetViewport(cmd, 0.0f, 0.0f, (float)pRenderTarget->mWidth, (float)pRenderTarget->mHeight, 0.0f, 1.0f);
+		cmdSetScissor(cmd, 0, 0, pRenderTarget->mWidth, pRenderTarget->mHeight);
 
 		// Draw Sprites
 		if (gDrawSpriteCount > 0)
 		{
 			cmdBeginDebugMarker(cmd, 1, 0, 1, "Draw Sprites");
 			cmdBindPipeline(cmd, pSpritePipeline);
-
-#define NUM_BUFFERS 3
-			DescriptorData params[NUM_BUFFERS] = {};
-			params[0].pName = "VsParams";
-			params[0].ppBuffers = &pParamsUbo[gFrameIndex];
-			params[1].pName = "uTexture0";
-			params[1].ppTextures = &pSpriteTexture;
-			params[2].pName = "instanceBuffer";
-			params[2].ppBuffers = &pSpriteVertexBuffers[gFrameIndex];
-
-			cmdBindDescriptors(cmd, pDescriptorBinder, pRootSignature, NUM_BUFFERS, params);
-			cmdBindIndexBuffer(cmd, pSpriteIndexBuffer, 0);
+			cmdBindPushConstants(cmd, pRootSignature, "RootConstant", &aspect);
+			cmdBindDescriptorSet(cmd, 0, pDescriptorSetTexture);
+			cmdBindDescriptorSet(cmd, gFrameIndex, pDescriptorSetUniforms);
+			cmdBindIndexBuffer(cmd, pSpriteIndexBuffer, INDEX_TYPE_UINT16, 0);
 			cmdDrawIndexedInstanced(cmd, 6, 0, gDrawSpriteCount, 0, 0);
 			cmdEndDebugMarker(cmd);
 		}
@@ -830,30 +858,45 @@ class EntityComponentSystem: public IApp
 		uiTextDesc.mFontColor = 0xff00cc00;
 		uiTextDesc.mFontSize = 18;
 		 
-		gAppUI.DrawText(
-			cmd, float2(8.0f, 15.0f), eastl::string().sprintf("CPU %f ms", gTimer.GetUSecAverage() / 1000.0f).c_str(), &uiTextDesc);
-		
-		gAppUI.DrawText(
-			cmd, float2(8.0f, 40.0f), eastl::string().sprintf("GPU %f ms", (float)pGpuProfiler->mCumulativeTime * 1000.0f).c_str(),
-			&uiTextDesc);
-
-		cmdDrawProfiler(cmd, mSettings.mWidth, mSettings.mHeight);
-
-		gAppUI.Gui(pGuiWindow);
+#if !defined(__ANDROID__)
+		float2 txtSize = cmdDrawCpuProfile(cmd, float2(8.0f, 15.0f), &gFrameTimeDraw);
+        cmdDrawGpuProfile(cmd, float2(8.0f, txtSize.y + 30.f), gGpuProfileToken, &uiTextDesc);
+#else
+		cmdDrawCpuProfile(cmd, float2(8.0f, 15.0f), &gFrameTimeDraw);
+#endif
+		cmdDrawProfilerUI();
 
         gAppUI.Draw(cmd);
 		cmdBindRenderTargets(cmd, 0, NULL, NULL, NULL, NULL, NULL, -1, -1);
 		cmdEndDebugMarker(cmd);
 
-		barriers[0] = { pRenderTarget->pTexture, RESOURCE_STATE_PRESENT };
-		cmdResourceBarrier(cmd, 0, NULL, 1, barriers, true);
+		barriers[0] = { pRenderTarget, RESOURCE_STATE_RENDER_TARGET, RESOURCE_STATE_PRESENT };
+		cmdResourceBarrier(cmd, 0, NULL, 0, NULL, 1, barriers);
 
-		cmdEndGpuFrameProfile(cmd, pGpuProfiler);
+		cmdEndGpuFrameProfile(cmd, gGpuProfileToken);
 		endCmd(cmd);
 
-		queueSubmit(pGraphicsQueue, 1, &cmd, pRenderCompleteFence, 1, &pImageAcquiredSemaphore, 1, &pRenderCompleteSemaphore);
-		queuePresent(pGraphicsQueue, pSwapChain, gFrameIndex, 1, &pRenderCompleteSemaphore);
+		waitForToken(&updateComplete);
+
+		QueueSubmitDesc submitDesc = {};
+		submitDesc.mCmdCount = 1;
+		submitDesc.mSignalSemaphoreCount = 1;
+		submitDesc.mWaitSemaphoreCount = 1;
+		submitDesc.ppCmds = &cmd;
+		submitDesc.ppSignalSemaphores = &pRenderCompleteSemaphore;
+		submitDesc.ppWaitSemaphores = &pImageAcquiredSemaphore;
+		submitDesc.pSignalFence = pRenderCompleteFence;
+		queueSubmit(pGraphicsQueue, &submitDesc);
+		QueuePresentDesc presentDesc = {};
+		presentDesc.mIndex = swapchainImageIndex;
+		presentDesc.mWaitSemaphoreCount = 1;
+		presentDesc.ppWaitSemaphores = &pRenderCompleteSemaphore;
+		presentDesc.pSwapChain = pSwapChain;
+		presentDesc.mSubmitDone = true;
+		queuePresent(pGraphicsQueue, &presentDesc);
 		flipProfiler();
+
+		gFrameIndex = (gFrameIndex + 1) % gImageCount;
 	}
 
 	const char* GetName() { return "17_EntityComponentSystem"; }
@@ -861,36 +904,18 @@ class EntityComponentSystem: public IApp
 	bool addMainSwapChain()
 	{
 		SwapChainDesc swapChainDesc = {};
-		swapChainDesc.pWindow = pWindow;
+		swapChainDesc.mWindowHandle = pWindow->handle;
 		swapChainDesc.mPresentQueueCount = 1;
 		swapChainDesc.ppPresentQueues = &pGraphicsQueue;
 		swapChainDesc.mWidth = mSettings.mWidth;
 		swapChainDesc.mHeight = mSettings.mHeight;
 		swapChainDesc.mImageCount = gImageCount;
-		swapChainDesc.mSampleCount = SAMPLE_COUNT_1;
 		swapChainDesc.mColorFormat = getRecommendedSwapchainFormat(true);
-		swapChainDesc.mEnableVsync = false;
+		swapChainDesc.mColorClearValue = { { 0.1f, 0.1f, 0.1f, 1.0f } };
+		swapChainDesc.mEnableVsync = mSettings.mDefaultVSyncEnabled;
 		addSwapChain(pRenderer, &swapChainDesc, &pSwapChain);
 
 		return pSwapChain != NULL;
-	}
-
-	bool addDepthBuffer()
-	{
-		// Add depth buffer
-		RenderTargetDesc depthRT = {};
-		depthRT.mArraySize = 1;
-		depthRT.mClearValue.depth = 1.0f;
-		depthRT.mClearValue.stencil = 0;
-		depthRT.mDepth = 1;
-		depthRT.mFormat = ImageFormat::D32F;
-		depthRT.mHeight = mSettings.mHeight;
-		depthRT.mSampleCount = SAMPLE_COUNT_1;
-		depthRT.mSampleQuality = 0;
-		depthRT.mWidth = mSettings.mWidth;
-		addRenderTarget(pRenderer, &depthRT, &pDepthBuffer);
-
-		return pDepthBuffer != NULL;
 	}
 };
 

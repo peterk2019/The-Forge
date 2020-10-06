@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -27,7 +27,6 @@
 #include "IOperatingSystem.h"
 #include "../Math/MathTypes.h"
 
-struct ButtonData;
 class VirtualJoystickUI;
 
 struct CameraMotionParameters
@@ -42,7 +41,6 @@ class ICameraController
 	public:
 	virtual ~ICameraController() {}
 	virtual void setMotionParameters(const CameraMotionParameters&) = 0;
-	virtual bool onInputEvent(const ButtonData* pData) = 0;
 	virtual void update(float deltaTime) = 0;
 
 	// there are also implicit dependencies on the keyboard state.
@@ -50,16 +48,21 @@ class ICameraController
 	virtual mat4 getViewMatrix() const = 0;
 	virtual vec3 getViewPosition() const = 0;
 	virtual vec2 getRotationXY() const = 0;
-	virtual void setVirtualJoystick(VirtualJoystickUI* virtualJoystick = NULL) = 0;
 	virtual void moveTo(const vec3& location) = 0;
 	virtual void lookAt(const vec3& lookAt) = 0;
+	virtual void setViewRotationXY(const vec2& v) = 0;
+	virtual void resetView() = 0;
+
+	virtual void onMove(const float2& vec) = 0;
+	virtual void onRotate(const float2& vec) = 0;
+	virtual void onZoom(const float2& vec) = 0;
 };
 
 /// \c createGuiCameraController assumes that the camera is not rotated around the look direction;
 /// in its matrix, \c Z points at \c startLookAt and \c X is horizontal.
 ICameraController* createGuiCameraController(vec3 startPosition, vec3 startLookAt);
 
-/// \c createFpsCameraController does basic FPS-style god mode navigation; conf_free-look is constrained
+/// \c createFpsCameraController does basic FPS-style god mode navigation; tf_free-look is constrained
 /// to about +/- 88 degrees and WASD translates in the camera's local XZ plane.
 ICameraController* createFpsCameraController(vec3 startPosition, vec3 startLookAt);
 

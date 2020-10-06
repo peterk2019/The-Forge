@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -25,15 +25,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-struct InstanceData
-{
-    float4x4 mvp;
-    float4x4 normalMat;
-    float4 surfaceColor;
-    float4 deepColor;
-    int textureID;
-    uint _pad0[3];
-};
+#include "argument_buffers.h"
 
 struct RootConstantData
 {
@@ -60,8 +52,9 @@ float linstep(float min, float max, float s)
 }
 
 vertex PsIn stageMain(VsIn In [[stage_in]],
-                      constant InstanceData* instanceBuffer     [[buffer(1)]],
-                      constant RootConstantData& rootConstant   [[buffer(2)]])
+                      constant InstanceData* instanceBuffer   [[buffer(0)]],
+                      constant RootConstantData& rootConstant [[buffer(1)]]
+)
 {
     PsIn result;
     result.position = instanceBuffer[rootConstant.index].mvp * float4(In.position.xyz, 1);

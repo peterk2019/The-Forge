@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -28,29 +28,29 @@
 #include <metal_stdlib>
 using namespace metal;
 
-struct RootConstantData
-{
-    uint numBatches;
-};
-
-struct IndirectDrawArguments
-{
-    uint vertexCount;
-    uint instanceCount;
-    uint startVertex;
-    uint startInstance;
-};
+#include "shader_defs.h"
+#include "cull_argument_buffers.h"
 
 //[numthreads(256, 1, 1)]
-kernel void stageMain(uint tid [[thread_position_in_grid]],
-                      device IndirectDrawArguments* indirectDrawArgsCamera [[buffer(0)]],
-                      device IndirectDrawArguments* indirectDrawArgsShadow [[buffer(1)]],
-                      constant RootConstantData& rootConstant [[buffer(2)]])
+kernel void stageMain(
+    uint tid                                    [[thread_position_in_grid]],
+    constant CSDataPerFrame& csDataPerFrame     [[buffer(UPDATE_FREQ_PER_FRAME)]]
+)
 {
-    if (tid >= rootConstant.numBatches)
+    if (tid >= MAX_DRAWS_INDIRECT - 1)
         return;
     
-    indirectDrawArgsCamera[tid].vertexCount = 0;
-    indirectDrawArgsShadow[tid].vertexCount = 0;
+    for (uint i = 0; i < NUM_CULLING_VIEWPORTS; ++i)
+    {
+        csDataPerFrame.uncompactedDrawArgsRW[i][tid].numIndices = 0;
+    }
+    
+    if (tid == 0)
+    {
+        for (uint i = 0; i < NUM_CULLING_VIEWPORTS; ++i)
+        {
+		atomic_store_explicit(&csDataPerFrame.indirectDrawArgsBufferAlpha[i][DRAW_COUNTER_SLOT_POS], 0, memory_order_relaxed);
+		atomic_store_explicit(&csDataPerFrame.indirectDrawArgsBufferNoAlpha[i][DRAW_COUNTER_SLOT_POS], 0, memory_order_relaxed);
+        }
+    }
 }
-

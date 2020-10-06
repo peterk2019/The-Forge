@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -31,6 +31,8 @@
 #define WIN32_LEAN_AND_MEAN 1
 #endif
 #include <windows.h>
+#undef min
+#undef max
 #endif
 
 #if defined(__APPLE__)
@@ -40,88 +42,114 @@
 #include <stdint.h>
 typedef uint64_t uint64;
 #endif
-#endif
-#if defined(__ANDROID__)
+#elif defined(__ANDROID__)
 #include <android_native_app_glue.h>
 #include <android/log.h>
-#elif defined(__linux__)
+#elif defined(__linux__) && !defined(VK_USE_PLATFORM_GGP)
 #define VK_USE_PLATFORM_XLIB_KHR
 #if defined(VK_USE_PLATFORM_XLIB_KHR) || defined(VK_USE_PLATFORM_XCB_KHR)
 #include <X11/Xutil.h>
+// X11 defines primitive types which conflict with Forge libraries
+#undef Bool
 #endif
-#endif
-
-#ifdef _WIN32
-#define FORGE_CALLCONV __cdecl
-#else
-#define FORGE_CALLCONV
+#elif defined(NX64)
+#include "../../../Switch/Common_3/OS/NX/NXTypes.h"
 #endif
 
 #include <stdio.h>
 #include <stdint.h>
-#include "../../OS/Math/MathTypes.h"
+#include <string.h>
 
 // For time related functions such as getting localtime
 #include <time.h>
 #include <ctime>
 
-#ifndef _WIN32
+#include <float.h>
+#include <limits.h>
+#include <stddef.h>
+
+#include "../Core/Compiler.h"
+#include "../Math/MathTypes.h"
+
+#if !defined(_WIN32)
+#include <unistd.h>
 #define stricmp(a, b) strcasecmp(a, b)
+#if !defined(ORBIS) && !defined(PROSPERO)
 #define vsprintf_s vsnprintf
 #define strncpy_s strncpy
 #endif
+#endif
 
-#if defined(_DURANGO)
+#if defined(XBOX)
 #define stricmp(a, b) _stricmp(a, b)
 #endif
 
-typedef void* IconHandle;
-typedef void* WindowHandle;
+// #TODO: Fix - FORGE_DEBUG is a toggle (either it is defined or not defined) Setting it to zero or one
+// so it can be used with #if is not the right approach
+#ifndef FORGE_DEBUG
+#if defined(DEBUG) || defined(_DEBUG) || defined(AUTOMATED_TESTING)
+#define FORGE_DEBUG
+#endif
+#endif
+
+#ifndef FORGE_STACKTRACE_DUMP
+#ifdef AUTOMATED_TESTING
+#if defined(NX64) || (defined(_WINDOWS) && defined(_M_X64)) || defined(ORBIS)
+#define FORGE_STACKTRACE_DUMP
+#endif
+#endif
+#endif
+
+typedef struct WindowHandle
+{
+#if defined(VK_USE_PLATFORM_XLIB_KHR)
+	Display*                 display;
+	Window                   window;
+	Atom                     xlib_wm_delete_window;
+    Colormap                 colormap;
+#elif defined(VK_USE_PLATFORM_XCB_KHR)
+	xcb_connection_t*        connection;
+	xcb_window_t             window;
+	xcb_screen_t*            screen;
+	xcb_intern_atom_reply_t* atom_wm_delete_window;
+#elif defined(VK_USE_PLATFORM_ANDROID_KHR)
+	ANativeWindow*           window;
+	ANativeActivity*         activity;
+#else
+	void*                    window;    //hWnd
+#endif
+} WindowHandle;
 
 typedef struct RectDesc
 {
-	int left;
-	int top;
-	int right;
-	int bottom;
+	int32_t left;
+	int32_t top;
+	int32_t right;
+	int32_t bottom;
 } RectDesc;
 
 inline int getRectWidth(const RectDesc& rect) { return rect.right - rect.left; }
 
 inline int getRectHeight(const RectDesc& rect) { return rect.bottom - rect.top; }
 
-typedef struct WindowsDesc
+typedef struct
 {
-#if defined(VK_USE_PLATFORM_XLIB_KHR)
-	Display* display;
-	Window   xlib_window;
-	Atom     xlib_wm_delete_window;
-#elif defined(VK_USE_PLATFORM_XCB_KHR)
-	Display*                 display;
-	xcb_connection_t*        connection;
-	xcb_screen_t*            screen;
-	xcb_window_t             xcb_window;
-	xcb_intern_atom_reply_t* atom_wm_delete_window;
-#else
-	WindowHandle handle = NULL;    //hWnd
-#endif
-	RectDesc   windowedRect;
-	RectDesc   fullscreenRect;
-	RectDesc   clientRect;
-	bool       fullScreen = false;
-	unsigned   windowsFlags = 0;
-	IconHandle bigIcon = NULL;
-	IconHandle smallIcon = NULL;
-
-	bool cursorTracked = false;
-	bool iconified = false;
-	bool maximized = false;
-	bool minimized = false;
-	bool visible = true;
-
-	// maybe that should go to the input system?
-	// The last received cursor position, regardless of source
-	int lastCursorPosX, lastCursorPosY;
+	WindowHandle handle;
+	RectDesc windowedRect;
+	RectDesc fullscreenRect;
+	RectDesc clientRect;
+	uint32_t windowsFlags;
+	bool fullScreen;
+	bool cursorTracked;
+	bool iconified;
+	bool maximized;
+	bool minimized;
+	bool hide;
+	bool noresizeFrame;
+	bool borderlessWindow;
+	bool overrideDefaultPosition;
+	bool centered;
+	bool forceLowDPI;
 } WindowsDesc;
 
 typedef struct Resolution
@@ -132,107 +160,89 @@ typedef struct Resolution
 
 // Monitor data
 //
-typedef struct MonitorDesc
+typedef struct
 {
-	RectDesc monitorRect;
-	RectDesc workRect;
+	RectDesc          monitorRect;
+	RectDesc          workRect;
+    uint2             dpi;
+    uint2             physicalSize;
 	// This size matches the static size of DISPLAY_DEVICE.DeviceName
-#ifdef _WIN32
-	WCHAR adapterName[32];
-	WCHAR displayName[32];
-	WCHAR publicAdapterName[64];
-	WCHAR publicDisplayName[64];
-#else
-	char                     adapterName[32];
-	char                     displayName[32];
-	char                     publicAdapterName[64];
-	char                     publicDisplayName[64];
-#endif
-	bool modesPruned;
-	bool modeChanged;
-
-	Resolution  defaultResolution;
-	Resolution* resolutions;
-	uint32_t    resolutionCount;
-} MonitorDesc;
-
-#include <float.h>
-#include <limits.h>
-
-// Define some sized types
-typedef uint8_t uint8;
-typedef int8_t  int8;
-
-typedef uint16_t uint16;
-typedef int16_t  int16;
-
-typedef uint32_t uint32;
-typedef int32_t  int32;
-
-#include <stddef.h>
-typedef ptrdiff_t intptr;
-
-#ifdef _WIN32
-typedef signed __int64   int64;
-typedef unsigned __int64 uint64;
+#if defined(_WIN32)
+	WCHAR             adapterName[32];
+	WCHAR             displayName[32];
+	WCHAR             publicAdapterName[128];
+	WCHAR             publicDisplayName[128];
 #elif defined(__APPLE__)
-typedef unsigned long DWORD;
-typedef unsigned int UINT;
-typedef long long int int64;
-//typedef bool BOOL;
-#elif defined(__linux__)
-typedef unsigned long DWORD;
-typedef unsigned int UINT;
-typedef int64_t int64;
-typedef uint64_t uint64;
+#if defined(TARGET_IOS)
 #else
-typedef signed long long   int64;
-typedef unsigned long long uint64;
+	CGDirectDisplayID displayID;
+	char              publicAdapterName[64];
+	char              publicDisplayName[64];
 #endif
-
-typedef uint8        ubyte;
-typedef uint16       ushort;
-typedef unsigned int uint;
-typedef const char * LPCSTR, *PCSTR;
+#elif defined(__linux__) && !defined(__ANDROID__)
+	Screen*           screen;
+	char              adapterName[32];
+	char              displayName[32];
+	char              publicAdapterName[64];
+	char              publicDisplayName[64];
+#else
+	char              adapterName[32];
+	char              displayName[32];
+	char              publicAdapterName[64];
+	char              publicDisplayName[64];
+#endif
+	Resolution*       resolutions;
+	Resolution        defaultResolution;
+	uint32_t          resolutionCount;
+	bool              modesPruned;
+	bool              modeChanged;
+} MonitorDesc;
 
 // API functions
 void requestShutdown();
+
+// Custom processing of OS pipe messages
+typedef int32_t(*CustomMessageProcessor)(WindowsDesc* pWindow, void* msg);
+void setCustomMessageProcessor(CustomMessageProcessor proc);
 
 // Window handling
 void openWindow(const char* app_name, WindowsDesc* winDesc);
 void closeWindow(const WindowsDesc* winDesc);
 void setWindowRect(WindowsDesc* winDesc, const RectDesc& rect);
 void setWindowSize(WindowsDesc* winDesc, unsigned width, unsigned height);
+void toggleBorderless(WindowsDesc* winDesc, unsigned width, unsigned height);
 void toggleFullscreen(WindowsDesc* winDesc);
 void showWindow(WindowsDesc* winDesc);
 void hideWindow(WindowsDesc* winDesc);
 void maximizeWindow(WindowsDesc* winDesc);
 void minimizeWindow(WindowsDesc* winDesc);
+void centerWindow(WindowsDesc* winDesc);
 
+// Mouse and cursor handling
+void* createCursor(const char* path);
+void setCursor(void* cursor);
+void showCursor();
+void hideCursor();
+bool isCursorInsideTrackingArea();
 void setMousePositionRelative(const WindowsDesc* winDesc, int32_t x, int32_t y);
+void setMousePositionAbsolute(int32_t x, int32_t y);
 
 void getRecommendedResolution(RectDesc* rect);
 // Sets video mode for specified display
 void setResolution(const MonitorDesc* pMonitor, const Resolution* pRes);
 
 MonitorDesc* getMonitor(uint32_t index);
+uint32_t     getMonitorCount();
 float2       getDpiScale();
 
 bool getResolutionSupport(const MonitorDesc* pMonitor, const Resolution* pRes);
 
-// Time related functions
-unsigned getSystemTime();
-unsigned getTimeSinceStart();
+// Shell commands
 
-#ifdef _WIN32
-void sleep(unsigned mSec);
-#endif
+/// @param stdOutFile The file to which the output of the command should be written. May be NULL.
+int systemRun(const char *command, const char **arguments, size_t argumentCount, const char* stdOutFile);
 
-// High res timer functions
-int64_t getUSec();
-int64_t getTimerFrequency();
 
 //
 // failure research ...
 //
-#include "IPlatformEvents.h"

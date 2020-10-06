@@ -1,6 +1,6 @@
 #include "BaseComponent.h"
 
-#include "../../Common_3/OS/Interfaces/IMemoryManager.h"    // Must be the last include in a cpp file
+#include "../../Common_3/OS/Interfaces/IMemory.h"    // Must be the last include in a cpp file
 
 ComponentRegistrator* ComponentRegistrator::instance = NULL;
 
@@ -8,7 +8,7 @@ ComponentRegistrator* ComponentRegistrator::getInstance()
 {
 	if (!instance)
 	{
-		instance = conf_new(ComponentRegistrator);
+		instance = tf_new(ComponentRegistrator);
 		return instance;
 	}
 	return instance;
@@ -18,7 +18,7 @@ void ComponentRegistrator::destroyInstance()
 {
 	if (ComponentRegistrator::instance)
 	{
-		conf_delete(instance);
+		tf_delete(instance);
 	}
 }
 

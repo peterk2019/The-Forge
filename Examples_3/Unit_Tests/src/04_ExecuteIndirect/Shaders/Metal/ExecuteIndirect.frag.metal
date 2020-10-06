@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -25,6 +25,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#include "argument_buffers.h"
+
 struct VsIn
 {
     float4 position [[attribute(0)]];
@@ -39,10 +41,11 @@ struct PsIn
     float4 albedo;
 };
 
-fragment float4 stageMain(PsIn In                       [[stage_in]],
-                          texture2d_array<float> uTex0  [[texture(0)]],
-                          sampler uSampler0             [[sampler(0)]])
-{    
+fragment float4 stageMain(
+    PsIn In                       [[stage_in]],
+    ExecuteIndirectArgData
+)
+{
     const float3 lightDir = -normalize(float3(2,6,1));
 
     float wrap_diffuse = saturate(dot(lightDir, normalize(In.normal)));

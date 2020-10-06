@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -27,6 +27,7 @@ using namespace metal;
 
 #include "shader_defs.h"
 #include "shading.h"
+#include "deferred_shade_pointlight.h"
 
 struct VSInput
 {
@@ -42,12 +43,13 @@ struct VSOutput
 
 vertex VSOutput stageMain(VSInput input                         [[stage_in]],
                           uint instanceId                       [[instance_id]],
-                          constant PerFrameConstants& uniforms  [[buffer(1)]],
-                          constant LightData* lights            [[buffer(2)]])
+                          constant ArgData& vsData [[buffer(UPDATE_FREQ_NONE)]],
+                          constant ArgDataPerFrame& vsDataPerFrame [[buffer(UPDATE_FREQ_PER_FRAME)]]
+)
 {
     VSOutput output;
-    output.lightPos = lights[instanceId].position;
-    output.color = lights[instanceId].color;
-    output.position = uniforms.transform[VIEW_CAMERA].mvp * float4((input.position.xyz * LIGHT_SIZE) + output.lightPos, 1);
+    output.lightPos = vsData.lights[instanceId].position;
+    output.color = vsData.lights[instanceId].color;
+    output.position = vsDataPerFrame.uniforms.transform[VIEW_CAMERA].vp * float4((input.position.xyz * LIGHT_SIZE) + output.lightPos, 1);
     return output;
 }

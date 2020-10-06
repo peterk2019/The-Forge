@@ -1,4 +1,3 @@
-
 // ================================================================================================
 // -*- C++ -*-
 // File: vectormath/common.hpp
@@ -6,12 +5,10 @@
 // Created on: 30/12/16
 // Brief: Extra helper functions added to the Vectormath library.
 // ================================================================================================
+#pragma once
 
-#ifndef VECTORMATH_COMMON_HPP
-#define VECTORMATH_COMMON_HPP
-
-#define MEM_MANAGER_FROM_HEADER
-#include "../../../OS/Interfaces/IMemoryManager.h"
+#define IMEMORY_FROM_HEADER
+#include "../../../OS/Interfaces/IMemory.h"
 
 namespace Vectormath
 {
@@ -84,24 +81,23 @@ inline Matrix4 makeShadowMatrix(const Vector4 & plane, const Vector4 & light)
 
 } // namespace Vectormath
 
-//========================================= #ConfettiMathExtensionsBegin ================================================
+//========================================= #TheForgeMathExtensionsBegin ================================================
 
 #include <math.h>
 #include <stdint.h>
 #include <stdlib.h>
 
-#ifdef TARGET_IOS
-#else
-#ifdef __ANDROID__
+#if defined(TARGET_IOS)
+#elif defined(__ANDROID__)
+#elif defined(NN_NINTENDO_SDK)
 #else
 #include <immintrin.h>
-#endif
 #endif
 
 #include "../../../OS/Core/Compiler.h"
 
 /*
-* Copyright (c) 2018-2019 Confetti Interactive Inc.
+* Copyright (c) 2018-2020 The Forge Interactive Inc.
 *
 * This file is part of The-Forge
 * (see https://github.com/ConfettiFX/The-Forge).
@@ -136,8 +132,15 @@ inline Matrix4 makeShadowMatrix(const Vector4 & plane, const Vector4 & light)
 // - Noise
 //****************************************************************************
 
+#if VECTORMATH_MODE_SCE
+namespace sce {
+	namespace Vectormath {
+		namespace Simd {
+			namespace Aos {
+#else
 namespace Vectormath
 {
+#endif
 // constants
 #define PI 3.14159265358979323846f
 static const float piDivTwo = 1.570796326794896619231f;        //!< pi/2 constant
@@ -200,8 +203,8 @@ struct half
 {
 	unsigned short sh;
 
-	half() {};
-	inline half(const float x)
+	half() = default;
+	inline explicit half(float x)
 	{
 		union {
 			float floatI;
@@ -296,18 +299,18 @@ struct half
 struct float2
 {
 	float2() = default;
-	float2(float x, float y)       : x(x), y(y) {}
-	float2(int32_t x, int32_t y)   : x((float)x), y((float)y) {}
-	float2(uint32_t x, uint32_t y) : x((float)x), y((float)y) {}
-	float2(int64_t x, int64_t y)   : x((float)x), y((float)y) {}
-	float2(uint64_t x, uint64_t y) : x((float)x), y((float)y) {}
-	float2(float x)                : x(x), y(x) {}
-	float2(int32_t x)              : x((float)x), y((float)x) {}
-	float2(uint32_t  x)            : x((float)x), y((float)x) {}
-	float2(int64_t x)              : x((float)x), y((float)x) {}
-	float2(uint64_t  x)            : x((float)x), y((float)x) {}
-	float2(const float2& f)        : x(f.x), y(f.y) {}
-	float2(const float(&fv)[2])    : x(fv[0]), y(fv[1]){}
+	constexpr float2(float x, float y)       : x(x), y(y) {}
+	constexpr float2(int32_t x, int32_t y)   : x((float)x), y((float)y) {}
+	constexpr float2(uint32_t x, uint32_t y) : x((float)x), y((float)y) {}
+	constexpr float2(int64_t x, int64_t y)   : x((float)x), y((float)y) {}
+	constexpr float2(uint64_t x, uint64_t y) : x((float)x), y((float)y) {}
+	constexpr explicit float2(float x)       : x(x), y(x) {}
+	constexpr explicit float2(int32_t x)     : x((float)x), y((float)x) {}
+	constexpr explicit float2(uint32_t  x)   : x((float)x), y((float)x) {}
+	constexpr explicit float2(int64_t x)     : x((float)x), y((float)x) {}
+	constexpr explicit float2(uint64_t  x)   : x((float)x), y((float)x) {}
+	constexpr float2(const float2& f)        : x(f.x), y(f.y) {}
+	constexpr float2(const float(&fv)[2])    : x(fv[0]), y(fv[1]){}
 
 	float& operator[](int i) { return (&x)[i]; }
 	float operator[](int i) const { return (&x)[i]; }
@@ -354,18 +357,18 @@ inline const float2& operator/=(float2&a, const float2& b) { return a = a / b; }
 struct float3
 {
 	float3() = default;
-	float3(float x, float y, float z)          : x(x), y(y), z(z) {}
-	float3(int32_t x, int32_t y, int32_t z)    : x((float)x), y((float)y), z((float)z) {}
-	float3(uint32_t x, uint32_t y, uint32_t z) : x((float)x), y((float)y), z((float)z) {}
-	float3(int64_t x, int64_t y, int64_t z)    : x((float)x), y((float)y), z((float)z) {}
-	float3(uint64_t x, uint64_t y, uint64_t z) : x((float)x), y((float)y), z((float)z) {}
-	float3(float x)                            : x(x), y(x), z(x) {}
-	float3(int32_t x)                          : x((float)x), y((float)x), z((float)x) {}
-	float3(uint32_t x)                         : x((float)x), y((float)x), z((float)x) {}
-	float3(int64_t x)                          : x((float)x), y((float)x), z((float)x) {}
-	float3(uint64_t x)                         : x((float)x), y((float)x), z((float)x) {}
-	float3(const float3& f)                    : x(f.x), y(f.y), z(f.z) {}
-	float3(const float(&fv)[3])                : x(fv[0]), y(fv[1]), z(fv[2]) {}
+	constexpr float3(float x, float y, float z)          : x(x), y(y), z(z) {}
+	constexpr float3(int32_t x, int32_t y, int32_t z)    : x((float)x), y((float)y), z((float)z) {}
+	constexpr float3(uint32_t x, uint32_t y, uint32_t z) : x((float)x), y((float)y), z((float)z) {}
+	constexpr float3(int64_t x, int64_t y, int64_t z)    : x((float)x), y((float)y), z((float)z) {}
+	constexpr float3(uint64_t x, uint64_t y, uint64_t z) : x((float)x), y((float)y), z((float)z) {}
+	constexpr explicit float3(float x)                   : x(x), y(x), z(x) {}
+	constexpr explicit float3(int32_t x)                 : x((float)x), y((float)x), z((float)x) {}
+	constexpr explicit float3(uint32_t x)                : x((float)x), y((float)x), z((float)x) {}
+	constexpr explicit float3(int64_t x)                 : x((float)x), y((float)x), z((float)x) {}
+	constexpr explicit float3(uint64_t x)                : x((float)x), y((float)x), z((float)x) {}
+	constexpr float3(const float3& f)                    : x(f.x), y(f.y), z(f.z) {}
+	constexpr float3(const float(&fv)[3])                : x(fv[0]), y(fv[1]), z(fv[2]) {}
 
 	float& operator[](int i) { return (&x)[i]; }
 	float operator[](int i) const { return (&x)[i]; }
@@ -407,19 +410,19 @@ inline const float3& operator/=(float3&a, const float3& b) { return a = a / b; }
 struct float4
 {
 	float4() = default;
-	float4(float x, float y, float z, float w)             : x(x), y(y), z(z), w(w) {}
-	float4(int32_t x, int32_t y, int32_t z, int32_t w)     : x((float)x), y((float)y), z((float)z), w((float)w) {}
-	float4(uint32_t x, uint32_t y, uint32_t z, uint32_t w) : x((float)x), y((float)y), z((float)z), w((float)w) {}
-	float4(int64_t x, int64_t y, int64_t z, int64_t w)     : x((float)x), y((float)y), z((float)z), w((float)w) {}
-	float4(uint64_t x, uint64_t y, uint64_t z, uint64_t w) : x((float)x), y((float)y), z((float)z), w((float)w) {}
-	float4(float x)                                        : x(x), y(x), z(x), w(x) {}
-	float4(int32_t x)                                      : x((float)x), y((float)x), z((float)x), w((float)x) {}
-	float4(uint32_t x)                                     : x((float)x), y((float)x), z((float)x), w((float)x) {}
-	float4(int64_t x)                                      : x((float)x), y((float)x), z((float)x), w((float)x) {}
-	float4(uint64_t x)                                     : x((float)x), y((float)x), z((float)x), w((float)x) {}
-	float4(const float3& f, float w) : x(f.x), y(f.y), z(f.z), w(w) {}
-	float4(const float4& f) : x(f.x), y(f.y), z(f.z), w(f.w) {}
-	float4(const float(&fv)[4]) : x(fv[0]), y(fv[1]), z(fv[2]), w(fv[3]) {}
+	constexpr float4(float x, float y, float z, float w)             : x(x), y(y), z(z), w(w) {}
+	constexpr float4(int32_t x, int32_t y, int32_t z, int32_t w)     : x((float)x), y((float)y), z((float)z), w((float)w) {}
+	constexpr float4(uint32_t x, uint32_t y, uint32_t z, uint32_t w) : x((float)x), y((float)y), z((float)z), w((float)w) {}
+	constexpr float4(int64_t x, int64_t y, int64_t z, int64_t w)     : x((float)x), y((float)y), z((float)z), w((float)w) {}
+	constexpr float4(uint64_t x, uint64_t y, uint64_t z, uint64_t w) : x((float)x), y((float)y), z((float)z), w((float)w) {}
+	constexpr explicit float4(float x)                               : x(x), y(x), z(x), w(x) {}
+	constexpr explicit float4(int32_t x)                             : x((float)x), y((float)x), z((float)x), w((float)x) {}
+	constexpr explicit float4(uint32_t x)                            : x((float)x), y((float)x), z((float)x), w((float)x) {}
+	constexpr explicit float4(int64_t x)                             : x((float)x), y((float)x), z((float)x), w((float)x) {}
+	constexpr explicit float4(uint64_t x)                            : x((float)x), y((float)x), z((float)x), w((float)x) {}
+	constexpr float4(const float3& f, float w)                       : x(f.x), y(f.y), z(f.z), w(w) {}
+	constexpr float4(const float4& f)                                : x(f.x), y(f.y), z(f.z), w(f.w) {}
+	constexpr float4(const float(&fv)[4])                            : x(fv[0]), y(fv[1]), z(fv[2]), w(fv[3]) {}
 
 	float& operator[](int i) { return (&x)[i]; }
 	float operator[](int i) const { return (&x)[i]; }
@@ -508,10 +511,10 @@ inline Vector4 f4Tov4(const float4& f4) { return Vector4(f4.x, f4.y, f4.z, f4.w)
 struct int2
 {
 	int2() = default;
-	int2(int x, int y) : x(x), y(y) {}
-	int2(int x) : x(x), y(x) {}
-	int2(const int2& f) : x(f.x), y(f.y) {}
-	int2(const int(&fv)[2]) : x(fv[0]), y(fv[1]) {}
+	constexpr int2(int x, int y)      : x(x), y(y) {}
+	constexpr explicit int2(int x)    : x(x), y(x) {}
+	constexpr int2(const int2& f)     : x(f.x), y(f.y) {}
+	constexpr int2(const int(&fv)[2]) : x(fv[0]), y(fv[1]) {}
 
 	int& operator[](int i) { return (&x)[i]; }
 	int operator[](int i) const { return (&x)[i]; }
@@ -556,10 +559,10 @@ inline const int2& operator/=(int2&a, const int2& b) { return a = a / b; }
 struct int3
 {
 	int3() = default;
-	int3(int x, int y, int z) : x(x), y(y), z(z) {}
-	int3(int x) : x(x), y(x), z(x) {}
-	int3(const int3& f) : x(f.x), y(f.y), z(f.z) {}
-	int3(const int(&fv)[3]) : x(fv[0]), y(fv[1]), z(fv[2]) {}
+	constexpr int3(int x, int y, int z) : x(x), y(y), z(z) {}
+	constexpr explicit int3(int x)      : x(x), y(x), z(x) {}
+	constexpr int3(const int3& f)       : x(f.x), y(f.y), z(f.z) {}
+	constexpr int3(const int(&fv)[3])   : x(fv[0]), y(fv[1]), z(fv[2]) {}
 
 	int& operator[](int i) { return (&x)[i]; }
 	int operator[](int i) const { return (&x)[i]; }
@@ -599,11 +602,11 @@ inline const int3& operator/=(int3&a, const int3& b) { return a = a / b; }
 struct int4
 {
 	int4() = default;
-	int4(int x, int y, int z, int w) : x(x), y(y), z(z), w(w) {}
-	int4(int x) : x(x), y(x), z(x), w(x) {}
-	int4(const int3& f, int w) : x(f.x), y(f.y), z(f.z), w(w) {}
-	int4(const int4& f) : x(f.x), y(f.y), z(f.z), w(f.w) {}
-	int4(const int(&fv)[4]) : x(fv[0]), y(fv[1]), z(fv[2]), w(fv[3]) {}
+	constexpr int4(int x, int y, int z, int w) : x(x), y(y), z(z), w(w) {}
+	constexpr explicit int4(int x)             : x(x), y(x), z(x), w(x) {}
+	constexpr int4(const int3& f, int w)       : x(f.x), y(f.y), z(f.z), w(w) {}
+	constexpr int4(const int4& f)              : x(f.x), y(f.y), z(f.z), w(f.w) {}
+	constexpr int4(const int(&fv)[4])          : x(fv[0]), y(fv[1]), z(fv[2]), w(fv[3]) {}
 
 	int& operator[](int i) { return (&x)[i]; }
 	int operator[](int i) const { return (&x)[i]; }
@@ -640,19 +643,7 @@ inline const int4& operator*=(int4&a, int4& b) { return a = a * b; }
 inline const int4& operator/=(int4&a, const int4& b) { return a = a / b; }
 inline const int4& operator/=(int4& a, int b) { return a = a / b; }
 
-//----------------------------------------------------------------------------
-// int* to vec* conversions
-//----------------------------------------------------------------------------
-inline int2 iv2ToI2(const IVector2& v2) { return int2(v2.getX(), v2.getY()); }
-inline int3 iv3ToI3(const IVector3& v3) { return int3(v3.getX(), v3.getY(), v3.getZ()); }
-inline int4 iv4ToI4(const IVector4& v4) { return int4(v4.getX(), v4.getY(), v4.getZ(), v4.getW()); }
 
-//----------------------------------------------------------------------------
-// vec* to int* conversions
-//----------------------------------------------------------------------------
-inline IVector2 i2Toiv2(const int2& i2) { return IVector2(i2.x, i2.y); }
-inline IVector3 i3Toiv3(const int3& i3) { return IVector3(i3.x, i3.y, i3.z); }
-inline IVector4 i4Toiv4(const int4& i4) { return IVector4(i4.x, i4.y, i4.z, i4.w); }
 
 #endif
 
@@ -673,10 +664,10 @@ typedef unsigned uint;
 struct uint2
 {
 	uint2() = default;
-	uint2(uint x, uint y) : x(x), y(y) {}
-	uint2(uint x) : x(x), y(x) {}
-	uint2(const uint2& f) : x(f.x), y(f.y) {}
-	uint2(const uint(&fv)[2]) : x(fv[0]), y(fv[1]) {}
+	constexpr uint2(uint x, uint y)     : x(x), y(y) {}
+	constexpr explicit uint2(uint x)    : x(x), y(x) {}
+	constexpr uint2(const uint2& f)     : x(f.x), y(f.y) {}
+	constexpr uint2(const uint(&fv)[2]) : x(fv[0]), y(fv[1]) {}
 
 	uint& operator[](uint i) { return (&x)[i]; }
 	uint operator[](uint i) const { return (&x)[i]; }
@@ -720,10 +711,10 @@ inline const uint2& operator/=(uint2&a, const uint2& b) { return a = a / b; }
 struct uint3
 {
 	uint3() = default;
-	uint3(uint x, uint y, uint z) : x(x), y(y), z(z) {}
-	uint3(uint x) : x(x), y(x), z(x) {}
-	uint3(const uint3& f) : x(f.x), y(f.y), z(f.z) {}
-	uint3(const uint(&fv)[3]) : x(fv[0]), y(fv[1]), z(fv[2]) {}
+	constexpr uint3(uint x, uint y, uint z) : x(x), y(y), z(z) {}
+	constexpr explicit uint3(uint x)        : x(x), y(x), z(x) {}
+	constexpr uint3(const uint3& f)         : x(f.x), y(f.y), z(f.z) {}
+	constexpr uint3(const uint(&fv)[3])     : x(fv[0]), y(fv[1]), z(fv[2]) {}
 
 	uint& operator[](uint i) { return (&x)[i]; }
 	uint operator[](uint i) const { return (&x)[i]; }
@@ -762,11 +753,11 @@ inline const uint3& operator/=(uint3&a, const uint3& b) { return a = a / b; }
 struct uint4
 {
 	uint4() = default;
-	uint4(uint x, uint y, uint z, uint w) : x(x), y(y), z(z), w(w) {}
-	uint4(uint x) : x(x), y(x), z(x), w(x) {}
-	uint4(const uint3& f, uint w) : x(f.x), y(f.y), z(f.z), w(w) {}
-	uint4(const uint4& f) : x(f.x), y(f.y), z(f.z), w(f.w) {}
-	uint4(const uint(&fv)[4]) : x(fv[0]), y(fv[1]), z(fv[2]), w(fv[3]) {}
+	constexpr uint4(uint x, uint y, uint z, uint w) : x(x), y(y), z(z), w(w) {}
+	constexpr explicit uint4(uint x)                : x(x), y(x), z(x), w(x) {}
+	constexpr uint4(const uint3& f, uint w)         : x(f.x), y(f.y), z(f.z), w(w) {}
+	constexpr uint4(const uint4& f)                 : x(f.x), y(f.y), z(f.z), w(f.w) {}
+	constexpr uint4(const uint(&fv)[4])             : x(fv[0]), y(fv[1]), z(fv[2]), w(fv[3]) {}
 
 	uint& operator[](uint i) { return (&x)[i]; }
 	uint operator[](uint i) const { return (&x)[i]; }
@@ -805,16 +796,6 @@ inline const uint4& operator/=(uint4& a, uint b) { return a = a / b; }
 //----------------------------------------------------------------------------
 // uint* to vec* conversions
 //----------------------------------------------------------------------------
-inline uint2 uv2ToU2(const UVector2& v2) { return uint2(v2.getX(), v2.getY()); }
-inline uint3 uv3ToU3(const UVector3& v3) { return uint3(v3.getX(), v3.getY(), v3.getZ()); }
-inline uint4 uv4ToU4(const UVector4& v4) { return uint4(v4.getX(), v4.getY(), v4.getZ(), v4.getW()); }
-
-//----------------------------------------------------------------------------
-// vec* to uint* conversions
-//----------------------------------------------------------------------------
-inline UVector2 u2Touv2(const uint2& u2) { return UVector2(u2.x, u2.y); }
-inline UVector3 u3Touv3(const uint3& u3) { return UVector3(u3.x, u3.y, u3.z); }
-inline UVector4 u4Touv4(const uint4& u4) { return UVector4(u4.x, u4.y, u4.z, u4.w); }
 
 #endif
 
@@ -824,11 +805,19 @@ inline UVector4 u4Touv4(const uint4& u4) { return UVector4(u4.x, u4.y, u4.z, u4.
 //	doing this to be able to instantiate vector min/max later
 #undef min
 #undef max
+
 //	use reference as argument since this function will be inlined anyway
 template <class T>
 constexpr T min(const T &x, const T &y) { return (x < y) ? x : y; }
 template <class T>
 constexpr T max(const T &x, const T &y) { return (x > y) ? x : y; }
+
+template <>
+constexpr uint2 min<>(const uint2 &x, const uint2 &y) { return { min(x.x, y.x), min(x.y, y.y) }; }
+template <>
+constexpr uint3 min<>(const uint3 &x, const uint3 &y) { return { min(x.x, y.x), min(x.y, y.y), min(x.z, y.z) }; }
+template <>
+constexpr uint4 min<>(const uint4 &x, const uint4 &y) { return { min(x.x, y.x), min(x.y, y.y), min(x.z, y.z), min(x.w, y.w) }; }
 
 inline uint2 min(const uint2 &x, const uint2& y) { return { min(x.x, y.x), min(x.y, y.y) }; }
 inline uint3 min(const uint3 &x, const uint3& y) { return { min(x.x, y.x), min(x.y, y.y), min(x.z, y.z) }; }
@@ -854,6 +843,31 @@ inline Vector3 max(const Vector3 &a, const Vector3 &b)
 		max(a.getZ(), b.getZ()));
 #else
 	return Vector3(_mm_max_ps(a.get128(), b.get128()));
+#endif
+}
+
+inline Vector4 min(const Vector4& a, const Vector4& b)
+{
+#if VECTORMATH_MODE_SCALAR
+	return Vector4(
+		min(a.getX(), b.getX()),
+		min(a.getY(), b.getY()),
+		min(a.getZ(), b.getZ()),
+		min(a.getW(), b.getW()));
+#else
+	return Vector4(_mm_min_ps(a.get128(), b.get128()));
+#endif
+}
+inline Vector4 max(const Vector4& a, const Vector4& b)
+{
+#if VECTORMATH_MODE_SCALAR
+	return Vector4(
+		max(a.getX(), b.getX()),
+		max(a.getY(), b.getY()),
+		max(a.getZ(), b.getZ()),
+		max(a.getW(), b.getW()));
+#else
+	return Vector4(_mm_max_ps(a.get128(), b.get128()));
 #endif
 }
 
@@ -956,6 +970,15 @@ static inline uint64_t round_up_64(uint64_t value, uint64_t multiple) { return (
 static inline uint32_t round_down(uint32_t value, uint32_t multiple) { return value  - value % multiple; }
 static inline uint64_t round_down_64(uint64_t value, uint64_t multiple) { return value - value % multiple; }
 
+template<typename T>
+static inline size_t tf_mem_hash(const T* mem, size_t size, size_t prev = 2166136261U)
+{
+	uint32_t result = (uint32_t)prev; // Intentionally uint32_t instead of size_t, so the behavior is the same
+									  // regardless of size.
+	while (size--)
+		result = (result * 16777619) ^ *mem++;
+	return (size_t)result;
+}
 
 //----------------------------------------------------------------------------
 // Color conversions / packing / unpacking
@@ -1109,7 +1132,7 @@ inline void generateSpherePoints(float **ppPoints, int *pNumberOfPoints, int num
 	float numSlices = (float)numberOfDivisions;
 
 	uint32_t numberOfPoints = numberOfDivisions * numberOfDivisions * 6;
-	float3* pPoints = (float3*)conf_malloc(numberOfPoints * sizeof(float3) * 2);
+	float3* pPoints = (float3*)tf_malloc(numberOfPoints * sizeof(float3) * 2);
 	uint32_t vertexCounter = 0;
 
 	for (int i = 0; i < numberOfDivisions; i++)
@@ -1156,7 +1179,7 @@ inline void generateSpherePoints(float **ppPoints, int *pNumberOfPoints, int num
 inline void generateCuboidPoints(float **ppPoints, int *pNumberOfPoints, float width = 1.f, float height = 1.f, float depth = 1.f, Vector3 center = Vector3{ 0.f,0.f,0.f })
 {
 	uint32_t numberOfPoints = 6 * 6;
-	float3* pPoints = (float3*)conf_malloc(numberOfPoints * sizeof(float3) * 2);
+	float3* pPoints = (float3*)tf_malloc(numberOfPoints * sizeof(float3) * 2);
 	uint32_t vertexCounter = 0;
 
 	Vector3 topLeftFrontPoint = Vector3{ -width / 2, height / 2, depth / 2 } +center;
@@ -1286,7 +1309,7 @@ inline void generateCuboidPoints(float **ppPoints, int *pNumberOfPoints, float w
 inline void generateBonePoints(float **ppPoints, int *pNumberOfPoints, float widthRatio)
 {
 	uint32_t numberOfPoints = 8 * 3;
-	float3* pPoints = (float3*)conf_malloc(numberOfPoints * sizeof(float3) * 2);
+	float3* pPoints = (float3*)tf_malloc(numberOfPoints * sizeof(float3) * 2);
 	uint32_t vertexCounter = 0;
 
 	Vector3 origin		= Vector3{ 0.f, 0.f, 0.f };
@@ -1410,11 +1433,11 @@ struct TexVertex
 	float2 texCoord;
 };
 
-#define MAKETEXQUAD(x0, y0, x1, y1, o)\
-	TexVertex(float2(x0 + o, y0 + o), float2(0, 0)),\
-	TexVertex(float2(x0 + o, y1 - o), float2(0, 1)),\
-	TexVertex(float2(x1 - o, y0 + o), float2(1, 0)),\
-	TexVertex(float2(x1 - o, y1 - o), float2(1, 1)),
+#define MAKETEXQUAD(vert, x0, y0, x1, y1, o)\
+	vert[0] = TexVertex(float2(x0 + o, y0 + o), float2(0, 0));\
+	vert[1] = TexVertex(float2(x0 + o, y1 - o), float2(0, 1));\
+	vert[2] = TexVertex(float2(x1 - o, y0 + o), float2(1, 0));\
+	vert[3] = TexVertex(float2(x1 - o, y1 - o), float2(1, 1));
 //----------------------------------------------------------------------------
 // Intersection Helpers
 //----------------------------------------------------------------------------
@@ -1472,6 +1495,13 @@ struct AABB
 		minBounds = Vector3(-0.001f, -0.001f, -0.001f);
 		maxBounds = Vector3(0.001f, 0.001f, 0.001f);
 	}
+
+	AABB(Vector3 const& argsMinBounds, Vector3 const& argsMaxBounds)
+	{
+		minBounds = argsMinBounds;
+		maxBounds = argsMaxBounds;
+	}
+
 	inline void Transform(Matrix4 const& mat)
 	{
 		minBounds = (mat * Vector4(minBounds.getX(), minBounds.getY(), minBounds.getZ(), 1.0f)).getXYZ();
@@ -1913,7 +1943,43 @@ inline const Frustum calculateFrustumPlanesFromRect(Matrix4 const& mvp,
 
 	return f;
 }
+#if VECTORMATH_MODE_SCE
+}}}}
+#else
 } // namespace Vectormath
-//========================================= #ConfettiMathExtensionsEnd ================================================
+#endif
 
-#endif // VECTORMATH_COMMON_HPP
+// These are added at the bottom because UVector/IVector are not included in VECTORMATH_MODE_SCE
+#ifdef Vectormath
+{
+#ifdef DEFINE_UNSIGNED_INT_X
+inline uint2 uv2ToU2(const UVector2& v2) { return uint2(v2.getX(), v2.getY()); }
+inline uint3 uv3ToU3(const UVector3& v3) { return uint3(v3.getX(), v3.getY(), v3.getZ()); }
+inline uint4 uv4ToU4(const UVector4& v4) { return uint4(v4.getX(), v4.getY(), v4.getZ(), v4.getW()); }
+
+//----------------------------------------------------------------------------
+// vec* to uint* conversions
+//----------------------------------------------------------------------------
+inline UVector2 u2Touv2(const uint2& u2) { return UVector2(u2.x, u2.y); }
+inline UVector3 u3Touv3(const uint3& u3) { return UVector3(u3.x, u3.y, u3.z); }
+inline UVector4 u4Touv4(const uint4& u4) { return UVector4(u4.x, u4.y, u4.z, u4.w); }
+#endif
+
+#ifdef DEFINE_INT_X
+//----------------------------------------------------------------------------
+// int* to vec* conversions
+//----------------------------------------------------------------------------
+inline int2 iv2ToI2(const IVector2& v2) { return int2(v2.getX(), v2.getY()); }
+inline int3 iv3ToI3(const IVector3& v3) { return int3(v3.getX(), v3.getY(), v3.getZ()); }
+inline int4 iv4ToI4(const IVector4& v4) { return int4(v4.getX(), v4.getY(), v4.getZ(), v4.getW()); }
+
+//----------------------------------------------------------------------------
+// vec* to int* conversions
+//----------------------------------------------------------------------------
+inline IVector2 i2Toiv2(const int2& i2) { return IVector2(i2.x, i2.y); }
+inline IVector3 i3Toiv3(const int3& i3) { return IVector3(i3.x, i3.y, i3.z); }
+inline IVector4 i4Toiv4(const int4& i4) { return IVector4(i4.x, i4.y, i4.z, i4.w); }
+#endif
+}
+#endif
+//========================================= #TheForgeMathExtensionsEnd ================================================

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  * 
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -24,11 +24,11 @@
 
 //--------------------------------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2016 Confetti Interactive Inc.
+// Copyright (C) 2009 - 2016 The Forge Interactive Inc.
 // All rights reserved.
 //
 // This source may not be distributed and/or modified without expressly written permission
-// from Confetti Interactive Inc.
+// from The Forge Interactive Inc.
 //
 //--------------------------------------------------------------------------------------------
 
@@ -37,7 +37,7 @@ cbuffer rootConstant : register(b0)
     uint drawID;
 }
 
-cbuffer uniformBlock : register(b5)
+cbuffer uniformBlock : register(b5, UPDATE_FREQ_PER_FRAME)
 {
     float4x4 viewProj;
 }
@@ -81,7 +81,7 @@ struct AsteroidStatic
 };
 
 
-RWStructuredBuffer<AsteroidStatic> asteroidsStatic : register(u1);
+StructuredBuffer<AsteroidStatic> asteroidsStatic : register(t10);
 RWStructuredBuffer<AsteroidDynamic> asteroidsDynamic : register(u2);
 
 PsIn main(VsIn In)

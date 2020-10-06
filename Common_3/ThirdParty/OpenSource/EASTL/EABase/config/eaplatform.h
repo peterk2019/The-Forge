@@ -96,7 +96,7 @@
 	#define EA_PLATFORM_DESKTOP 1
 #endif
 
-#if defined(EA_PLATFORM_PS4) || defined(__ORBIS__) || defined(EA_PLATFORM_KETTLE)
+#if defined(EA_PLATFORM_PS4) || defined(ORBIS) || defined(EA_PLATFORM_KETTLE)
 	// PlayStation 4
 	// Orbis was Sony's code-name for the platform, which is now obsolete.
 	// Kettle was an EA-specific code-name for the platform, which is now obsolete.
@@ -125,10 +125,10 @@
 	#endif
 
 
-#elif defined(EA_PLATFORM_XBOXONE) || defined(_DURANGO) || defined(EA_PLATFORM_CAPILANO)
+#elif defined(EA_PLATFORM_XBOXONE) || defined(XBOX) || defined(EA_PLATFORM_CAPILANO)
 	// XBox One
 	// Durango was Microsoft's code-name for the platform, which is now obsolete.
-	// Microsoft uses _DURANGO instead of some variation of _XBOX, though it's not natively defined by the compiler.
+	// Microsoft uses _XBOX instead of some variation of _XBOX, though it's not natively defined by the compiler.
 	// Capilano was an EA-specific code-name for the platform, which is now obsolete.
 	#if defined(EA_PLATFORM_XBOXONE)
 		#undef  EA_PLATFORM_XBOXONE
@@ -148,8 +148,8 @@
 		#endif
 	// End backward compatibility
 
-	#if !defined(_DURANGO)
-		#define _DURANGO
+	#if !defined(XBOX)
+		#define XBOX
 	#endif
 	#define EA_PLATFORM_NAME "XBox One"
   //#define EA_PROCESSOR_X86  Currently our policy is that we don't define this, even though x64 is something of a superset of x86.
@@ -171,7 +171,7 @@
 		#include <winapifamily.h>
 		#if WINAPI_FAMILY == WINAPI_FAMILY_TV_TITLE
 			#define EA_WINAPI_FAMILY EA_WINAPI_FAMILY_TV_TITLE
-		#elif WINAPI_FAMILY == WINAPI_FAMILY_DESKTOP_APP
+		#elif WINAPI_FAMILY  == WINAPI_FAMILY_DESKTOP_APP || WINAPI_FAMILY == WINAPI_FAMILY_GAMES
 			#define EA_WINAPI_FAMILY EA_WINAPI_FAMILY_DESKTOP_APP
 		#else
 			#error Unsupported WINAPI_FAMILY
@@ -582,6 +582,31 @@
 		#define EA_PLATFORM_WINRT 1 
 	#endif
 
+#elif (defined(EA_PLATFORM_NINTENDO) || defined(__NINTENDO__))
+	// Nintendo family of operating systems.
+	#undef EA_PLATFORM_NINTENDO
+	#define EA_PLATFORM_NINTENDO 1
+	#define EA_PLATFORM_POSIX 1
+
+	// Nintendo Switch
+#if defined(EA_PLATFORM_NX) || defined(NX64)
+	#undef  EA_PLATFORM_NX
+	#define EA_PLATFORM_NX 1
+	#define EA_PLATFORM_NAME "Nintendo"
+	#define EA_ASM_STYLE_ATT 1
+	#define EA_POSIX_THREADS_AVAILABLE 1
+	#define EA_PLATFORM_MOBILE 1
+
+	#if defined(__aarch64__) || defined(__AARCH64)
+		#define EA_PROCESSOR_ARM64 1
+		#define EA_SYSTEM_LITTLE_ENDIAN 1
+		#define EA_PLATFORM_DESCRIPTION "Nintendo ARM64"
+	#else
+		#error Unknown processor
+	#endif
+#else
+		#error Unknown Nintendo Platform
+#endif
 // Sun (Solaris)
 // __SUNPRO_CC is defined by the Sun compiler.
 // __sun is defined by the GCC compiler.
@@ -647,6 +672,8 @@
 	#if defined(EA_PLATFORM_APPLE)
 		#define EA_PLATFORM_MIN_MALLOC_ALIGNMENT 16
 	#elif defined(EA_PLATFORM_ANDROID) && defined(EA_PROCESSOR_ARM)
+		#define EA_PLATFORM_MIN_MALLOC_ALIGNMENT 8
+	#elif defined(EA_PLATFORM_NINTENDO) && defined(EA_PROCESSOR_ARM)
 		#define EA_PLATFORM_MIN_MALLOC_ALIGNMENT 8
 	#elif defined(EA_PLATFORM_ANDROID) && defined(EA_PROCESSOR_X86_64)
 		#define EA_PLATFORM_MIN_MALLOC_ALIGNMENT 8

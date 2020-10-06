@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -35,39 +35,22 @@
 #include "../../../../Common_3/ThirdParty/OpenSource/EASTL/string.h"
 
 // Interfaces
-#include "../../../../Common_3/OS/Interfaces/ILogManager.h"
+#include "../../../../Common_3/OS/Interfaces/ILog.h"
 #include "../../../../Common_3/OS/Interfaces/IFileSystem.h"
-#include "../../../../Common_3/OS/Interfaces/ITimeManager.h"
+#include "../../../../Common_3/OS/Interfaces/ITime.h"
 #include "../../../../Middleware_3/UI/AppUI.h"
 #include "../../../../Common_3/OS/Interfaces/IApp.h"
 #include "../../../../Common_3/OS/Interfaces/IProfiler.h"
+#include "../../../../Common_3/OS/Interfaces/IInput.h"
 #include "../../../../Common_3/Renderer/IRenderer.h"
-#include "../../../../Common_3/Renderer/ResourceLoader.h"
+#include "../../../../Common_3/Renderer/IResourceLoader.h"
 
 // Math
 #include "../../../../Common_3/OS/Math/MathTypes.h"
 
 // Input
-#include "../../../../Common_3/OS/Input/InputSystem.h"
-#include "../../../../Common_3/OS/Input/InputMappings.h"
-
 // Memory
-#include "../../../../Common_3/OS/Interfaces/IMemoryManager.h"    // NOTE: should be the last include in a .cpp!
-
-// Define App directories
-const char* pszBases[FSR_Count] = {
-	"../../../src/05_FontRendering/",       // FSR_BinShaders
-	"../../../src/05_FontRendering/",       // FSR_SrcShaders
-	"../../../UnitTestResources/",          // FSR_Textures
-	"../../../UnitTestResources/",          // FSR_Meshes
-	"../../../UnitTestResources/",          // FSR_Builtin_Fonts
-	"../../../src/05_FontRendering/",       // FSR_GpuConfig
-	"",                                     // FSR_Animation
-	"",                                     // FSR_Audio
-	"",                                     // FSR_OtherFiles
-	"../../../../../Middleware_3/Text/",    // FSR_MIDDLEWARE_TEXT
-	"../../../../../Middleware_3/UI/",      // FSR_MIDDLEWARE_UI
-};
+#include "../../../../Common_3/OS/Interfaces/IMemory.h"    // NOTE: should be the last include in a .cpp!
 
 /************************************************************************/
 /* SCENE VARIABLES
@@ -125,15 +108,12 @@ uint32_t GetSkinColorOfProperty(PropertiesWithSkinColor EProp, bool bDarkSkin)
 uint32_t GetSkinColorOfProperty(PropertiesWithSkinColor EProp, uint32_t theme) { return GetSkinColorOfProperty(EProp, (bool)theme); }
 
 const uint32_t gImageCount = 3;
-bool           bToggleMicroProfiler = false;
-bool           bPrevToggleMicroProfiler = false;
+ProfileToken   gGpuProfileToken;
 
 Renderer*    pRenderer = NULL;
 Queue*       pGraphicsQueue = NULL;
-CmdPool*     pCmdPool = NULL;
-Cmd**        ppCmds = NULL;
-GpuProfiler* pGpuProfiler = NULL;
-HiresTimer   gTimer;
+CmdPool*     pCmdPools[gImageCount];
+Cmd*         pCmds[gImageCount];
 
 SwapChain* pSwapChain = NULL;
 Fence*     pRenderCompleteFences[gImageCount] = { NULL };
@@ -150,7 +130,7 @@ Fonts      gFonts;
 *************************************************************************/
 #if defined(TARGET_IOS) || defined(ANDROID)
 const int TextureAtlasDimension = 512;
-#elif defined(DURANGO)
+#elif defined(XBOX)
 const int TextureAtlasDimension = 1024;
 #else    // PC / LINUX / MAC
 const int TextureAtlasDimension = 2048;
@@ -246,8 +226,9 @@ float2       GetCenteredTextPosition(const char* pText, const TextDrawDesc& draw
 
 //static float gBiasX = 0.0f;
 //static float gBiasY = 0.0f;
-static float2 gBias(0.0f, 0.0f);
-
+//static float2 gBias(0.0f, 0.0f);
+static const ClearValue gLightBackgroundColor = { { 1.0f, 1.0f, 1.0f, 1.0f } };
+static const ClearValue gDarkBackgroundColor = { { 0.05f, 0.05f, 0.05f, 1.0f } };
 /************************************************************************/
 /* APP IMPLEMENTATION
 *************************************************************************/
@@ -265,6 +246,13 @@ class FontRendering: public IApp
 
 	bool Init()
 	{
+        // FILE PATHS
+		fsSetPathForResourceDir(pSystemFileIO, RM_CONTENT, RD_SHADER_SOURCES,	"Shaders");
+		fsSetPathForResourceDir(pSystemFileIO, RM_DEBUG,   RD_SHADER_BINARIES,	"CompiledShaders");
+		fsSetPathForResourceDir(pSystemFileIO, RM_CONTENT, RD_GPU_CONFIG,		"GPUCfg");
+		fsSetPathForResourceDir(pSystemFileIO, RM_CONTENT, RD_TEXTURES,			"Textures");
+		fsSetPathForResourceDir(pSystemFileIO, RM_CONTENT, RD_FONTS,			"Fonts");
+        
 		// window and renderer setup
 		RendererDesc rendererDesc = { 0 };
 		initRenderer(GetName(), &rendererDesc, &pRenderer);
@@ -273,10 +261,18 @@ class FontRendering: public IApp
 			return false;
 
 		QueueDesc queueDesc = {};
-		queueDesc.mType = CMD_POOL_DIRECT;
+		queueDesc.mType = QUEUE_TYPE_GRAPHICS;
+		queueDesc.mFlag = QUEUE_FLAG_INIT_MICROPROFILE;
 		addQueue(pRenderer, &queueDesc, &pGraphicsQueue);
-		addCmdPool(pRenderer, pGraphicsQueue, false, &pCmdPool);
-		addCmd_n(pCmdPool, false, gImageCount, &ppCmds);
+		for (uint32_t i = 0; i < gImageCount; ++i)
+		{
+			CmdPoolDesc cmdPoolDesc = {};
+			cmdPoolDesc.pQueue = pGraphicsQueue;
+			addCmdPool(pRenderer, &cmdPoolDesc, &pCmdPools[i]);
+			CmdDesc cmdDesc = {};
+			cmdDesc.pPool = pCmdPools[i];
+			addCmd(pRenderer, &cmdDesc, &pCmds[i]);
+		}
 
 		for (uint32_t i = 0; i < gImageCount; ++i)
 		{
@@ -287,28 +283,22 @@ class FontRendering: public IApp
 
 		initResourceLoaderInterface(pRenderer);
 
-		initProfiler(pRenderer, gImageCount);
-		profileRegisterInput();
-
-		addGpuProfiler(pRenderer, pGraphicsQueue, &pGpuProfiler, "GpuProfiler");
-		finishResourceLoading();
+		waitForAllResourceLoads();
 
 		// initialize UI middleware
 		if (!gAppUI.Init(pRenderer))
 			return false;    // report?
 
 		// load the fonts
-		const FSRoot fontRoot = FSRoot::FSR_Builtin_Fonts;
-		gFonts.titilliumBold = gAppUI.LoadFont("TitilliumText/TitilliumText-Bold.otf", fontRoot);
-		gFonts.comicRelief = gAppUI.LoadFont("ComicRelief/ComicRelief.ttf", fontRoot);
-		gFonts.crimsonSerif = gAppUI.LoadFont("Crimson/Crimson-Roman.ttf", fontRoot);
-		gFonts.monoSpace = gAppUI.LoadFont("InconsolataLGC/Inconsolata-LGC.otf", fontRoot);
-		gFonts.monoSpaceBold = gAppUI.LoadFont("InconsolataLGC/Inconsolata-LGC-Bold.otf", fontRoot);
+		gFonts.titilliumBold = gAppUI.LoadFont("TitilliumText/TitilliumText-Bold.otf");
+		gFonts.comicRelief = gAppUI.LoadFont("ComicRelief/ComicRelief.ttf");
+		gFonts.crimsonSerif = gAppUI.LoadFont("Crimson/Crimson-Roman.ttf");
+		gFonts.monoSpace = gAppUI.LoadFont("InconsolataLGC/Inconsolata-LGC.otf");
+		gFonts.monoSpaceBold = gAppUI.LoadFont("InconsolataLGC/Inconsolata-LGC-Bold.otf");
 
-		// setup the UI window
-		const float dpiScl = getDpiScale().x;
-		vec2        UIWndSize = vec2{ 250, 300 } / dpiScl;
-		vec2        UIWndPosition = vec2{ mSettings.mWidth * 0.02f, mSettings.mHeight * 0.8f } / dpiScl;
+		// setup the UI window		
+		vec2        UIWndSize = vec2{ 250, 300 };
+		vec2        UIWndPosition = vec2{ mSettings.mWidth * 0.01f, mSettings.mHeight * 0.5f };
 		GuiDesc     guiDesc(UIWndPosition, UIWndSize, TextDrawDesc());
 		pUIWindow = gAppUI.AddGuiComponent("Controls", &guiDesc);
 
@@ -317,14 +307,26 @@ class FontRendering: public IApp
 		const size_t   NUM_THEMES = sizeof(pThemeLabels) / sizeof(const char*) - 1;    // -1 for the NULL element
 		DropdownWidget ThemeDropdown("Theme", &gSceneData.theme, pThemeLabels, (uint32_t*)ColorThemes, NUM_THEMES);
 
-    pUIWindow->AddWidget(CheckboxWidget("Toggle Micro Profiler", &bToggleMicroProfiler));
-
 		pUIWindow->AddWidget(ThemeDropdown);
 		pUIWindow->AddWidget(fitScreenCheckbox);
 
 		gPreviousTheme = gSceneData.theme;
 
-		requestMouseCapture(false);
+		if (!initInputSystem(pWindow))
+			return false;
+
+		initProfiler();
+
+        gGpuProfileToken = addGpuProfiler(pRenderer, pGraphicsQueue, "Graphics");
+
+		// App Actions
+		InputActionDesc actionDesc = { InputBindings::BUTTON_FULLSCREEN, [](InputActionContext* ctx) { toggleFullscreen(((IApp*)ctx->pUserData)->pWindow); return true; }, this };
+		addInputAction(&actionDesc);
+		actionDesc = { InputBindings::BUTTON_EXIT, [](InputActionContext* ctx) { requestShutdown(); return true; } };
+		addInputAction(&actionDesc);
+		actionDesc = { InputBindings::BUTTON_ANY, [](InputActionContext* ctx) { return gAppUI.OnButton(ctx->mBinding, ctx->mBool, ctx->pPosition); } };
+		addInputAction(&actionDesc);
+
 		return true;
 	}
 
@@ -332,7 +334,9 @@ class FontRendering: public IApp
 	{
 		waitQueueIdle(pGraphicsQueue);
 
-		exitProfiler(pRenderer);
+		exitInputSystem();
+
+		exitProfiler();
 
 		gAppUI.Exit();
 
@@ -343,34 +347,38 @@ class FontRendering: public IApp
 		}
 		removeSemaphore(pRenderer, pImageAcquiredSemaphore);
 
-		removeCmd_n(pCmdPool, gImageCount, ppCmds);
-		removeCmdPool(pRenderer, pCmdPool);
-		removeGpuProfiler(pRenderer, pGpuProfiler);
-		removeResourceLoaderInterface(pRenderer);
-		removeQueue(pGraphicsQueue);
+		for (uint32_t i = 0; i < gImageCount; ++i)
+		{
+			removeCmd(pRenderer, pCmds[i]);
+			removeCmdPool(pRenderer, pCmdPools[i]);
+		}
+		exitResourceLoaderInterface(pRenderer);
+		removeQueue(pRenderer, pGraphicsQueue);
 		removeRenderer(pRenderer);
 	}
 
 	bool Load()
 	{
 		SwapChainDesc swapChainDesc = {};
-		swapChainDesc.pWindow = pWindow;
+		swapChainDesc.mWindowHandle = pWindow->handle;
 		swapChainDesc.mPresentQueueCount = 1;
 		swapChainDesc.ppPresentQueues = &pGraphicsQueue;
 		swapChainDesc.mWidth = mSettings.mWidth;
 		swapChainDesc.mHeight = mSettings.mHeight;
 		swapChainDesc.mImageCount = gImageCount;
-		swapChainDesc.mSampleCount = SAMPLE_COUNT_1;
 		swapChainDesc.mColorFormat = getRecommendedSwapchainFormat(true);
-		swapChainDesc.mEnableVsync = false;
+		swapChainDesc.mEnableVsync = mSettings.mDefaultVSyncEnabled;
+		swapChainDesc.mColorClearValue = gSceneData.theme ? gDarkBackgroundColor : gLightBackgroundColor;
 		::addSwapChain(pRenderer, &swapChainDesc, &pSwapChain);
 		if (!pSwapChain)
 			return false;
 
 		InitializeSceneText();
 
-		if (!gAppUI.Load(pSwapChain->ppSwapchainRenderTargets))
+		if (!gAppUI.Load(pSwapChain->ppRenderTargets))
 			return false;
+
+		loadProfilerUI(&gAppUI, mSettings.mWidth, mSettings.mHeight);
 
 		return true;
 	}
@@ -378,44 +386,15 @@ class FontRendering: public IApp
 	void Unload()
 	{
 		waitQueueIdle(pGraphicsQueue);
+		unloadProfilerUI();
+		gAppUI.Unload();
 		removeSwapChain(pRenderer, pSwapChain);
+		gSceneData.sceneTextArray.set_capacity(0);
 	}
 
 	void Update(float deltaTime)
 	{
-		// PROCESS INPUT
-		//-------------------------------------------------------------------------------------
-
-		// Toggle Theme
-		if (InputSystem::GetBoolInput(KEY_LEFT_TRIGGER_TRIGGERED))    // KEY_LEFT_TRIGGER = spacebar
-		{
-			gSceneData.theme = !gSceneData.theme;    // dark/light theme
-													 // no need to call InitializeSceneText() here,
-													 // change of value event will be handled further down this function.
-		}
-
-		// --------------------------------------------------------------------
-		// old code fot switching the set of text to be displayed -------------
-		// gSceneData.sceneTextArrayIndex = (gSceneData.sceneTextArrayIndex + offset) % gSceneData.sceneTextArray.size();
-		// --------------------------------------------------------------------
-
-		// Toggle Displaying UI Window
-		if (InputSystem::GetBoolInput(KEY_LEFT_STICK_BUTTON_TRIGGERED))    // F1 key
-		{
-			gbShowSceneControlsUIWindow = !gbShowSceneControlsUIWindow;
-		}
-
-    // ProfileSetDisplayMode()
-    // TODO: need to change this better way 
-    if (bToggleMicroProfiler != bPrevToggleMicroProfiler)
-    {
-      Profile& S = *ProfileGet();
-      int nValue = bToggleMicroProfiler ? 1 : 0;
-      nValue = nValue >= 0 && nValue < P_DRAW_SIZE ? nValue : S.nDisplay;
-      S.nDisplay = nValue;
-
-      bPrevToggleMicroProfiler = bToggleMicroProfiler;
-    }
+		updateInputSystem(mSettings.mWidth, mSettings.mHeight);
 
 		gAppUI.Update(deltaTime);
 
@@ -436,11 +415,10 @@ class FontRendering: public IApp
 
 	void Draw()
 	{
-		gTimer.GetUSec(true);
+		uint32_t swapchainImageIndex;
+		acquireNextImage(pRenderer, pSwapChain, pImageAcquiredSemaphore, NULL, &swapchainImageIndex);
 
-		acquireNextImage(pRenderer, pSwapChain, pImageAcquiredSemaphore, NULL, &gFrameIndex);
-
-		RenderTarget* pRenderTarget = pSwapChain->ppSwapchainRenderTargets[gFrameIndex];
+		RenderTarget* pRenderTarget = pSwapChain->ppRenderTargets[swapchainImageIndex];
 		Semaphore*    pRenderCompleteSemaphore = pRenderCompleteSemaphores[gFrameIndex];
 		Fence*        pRenderCompleteFence = pRenderCompleteFences[gFrameIndex];
 
@@ -450,34 +428,25 @@ class FontRendering: public IApp
 		if (fenceStatus == FENCE_STATUS_INCOMPLETE)
 			waitForFences(pRenderer, 1, &pRenderCompleteFence);
 
+		resetCmdPool(pRenderer, pCmdPools[gFrameIndex]);
+
 		// simply record the screen cleaning command
 		LoadActionsDesc loadActions = {};
 		loadActions.mLoadActionsColor[0] = LOAD_ACTION_CLEAR;
-		loadActions.mClearColorValues[0].r = 1.0f;
-		loadActions.mClearColorValues[0].g = 1.0f;
-		loadActions.mClearColorValues[0].b = 1.0f;
-		loadActions.mClearColorValues[0].a = 1.0f;
-		const float darkBackgroundColor = 0.05f;
-		if (gSceneData.theme)
-		{
-			loadActions.mClearColorValues[0].r = darkBackgroundColor;
-			loadActions.mClearColorValues[0].g = darkBackgroundColor;
-			loadActions.mClearColorValues[0].b = darkBackgroundColor;
-			loadActions.mClearColorValues[0].a = 1.0f;
-		}
+		loadActions.mClearColorValues[0] = gSceneData.theme ? gDarkBackgroundColor : gLightBackgroundColor;
 
-		Cmd* cmd = ppCmds[gFrameIndex];
+		Cmd* cmd = pCmds[gFrameIndex];
 		beginCmd(cmd);
-		cmdBeginGpuFrameProfile(cmd, pGpuProfiler);
+		cmdBeginGpuFrameProfile(cmd, gGpuProfileToken);
 
-		TextureBarrier barrier = { pRenderTarget->pTexture, RESOURCE_STATE_RENDER_TARGET };
-		cmdResourceBarrier(cmd, 0, NULL, 1, &barrier, false);
+		RenderTargetBarrier barrier = { pRenderTarget, RESOURCE_STATE_PRESENT, RESOURCE_STATE_RENDER_TARGET };
+		cmdResourceBarrier(cmd, 0, NULL, 0, NULL, 1, &barrier);
 		cmdBindRenderTargets(cmd, 1, &pRenderTarget, NULL, &loadActions, NULL, NULL, -1, -1);
-		cmdSetViewport(cmd, 0.0f, 0.0f, (float)pRenderTarget->mDesc.mWidth, (float)pRenderTarget->mDesc.mHeight, 0.0f, 1.0f);
-		cmdSetScissor(cmd, 0, 0, pRenderTarget->mDesc.mWidth, pRenderTarget->mDesc.mHeight);
+		cmdSetViewport(cmd, 0.0f, 0.0f, (float)pRenderTarget->mWidth, (float)pRenderTarget->mHeight, 0.0f, 1.0f);
+		cmdSetScissor(cmd, 0, 0, pRenderTarget->mWidth, pRenderTarget->mHeight);
 
 		// draw text (uses AppUI)
-		cmdBeginGpuTimestampQuery(cmd, pGpuProfiler, "Render Text");
+		cmdBeginGpuTimestampQuery(cmd, gGpuProfileToken, "Render Text");
 
 		if (!gSceneData.sceneTextArray.empty())
 		{
@@ -489,34 +458,51 @@ class FontRendering: public IApp
 			}
 		}
 
-		cmdEndGpuTimestampQuery(cmd, pGpuProfiler);
+		cmdEndGpuTimestampQuery(cmd, gGpuProfileToken);
 
 		// draw profiler timings text (uses debugText)
 		TextDrawDesc uiTextDesc;    // default
 		uiTextDesc.mFontColor = gSceneData.theme ? 0xff21D8DE : 0xff444444;
 		uiTextDesc.mFontSize = 18;
-		gAppUI.DrawText(
-			cmd, float2(8.0f, 15.0f), eastl::string().sprintf("CPU %f ms", gTimer.GetUSecAverage() / 1000.0f).c_str(), &uiTextDesc);
-
-		gAppUI.DrawText(
-			cmd, float2(8.0f, 40.0f), eastl::string().sprintf("GPU %f ms", (float)pGpuProfiler->mCumulativeTime * 1000.0f).c_str(),
-			&uiTextDesc);
+        
+#if !defined(__ANDROID__)
+		float2 txtSize = cmdDrawCpuProfile(cmd, float2(8.f, 15.f), &uiTextDesc);
+        cmdDrawGpuProfile(cmd, float2(8.f, txtSize.y + 30.f), gGpuProfileToken, &uiTextDesc);
+#else
+		cmdDrawCpuProfile(cmd, float2(8.f, 15.f), &uiTextDesc);
+#endif
 
 		if (gbShowSceneControlsUIWindow)
 			gAppUI.Gui(pUIWindow);
 
-		cmdDrawProfiler(cmd, mSettings.mWidth, mSettings.mHeight);
+		cmdDrawProfilerUI();
 		gAppUI.Draw(cmd);
 
 		cmdBindRenderTargets(cmd, 0, NULL, NULL, NULL, NULL, NULL, -1, -1);
-		barrier = { pRenderTarget->pTexture, RESOURCE_STATE_PRESENT };
-		cmdResourceBarrier(cmd, 0, NULL, 1, &barrier, true);
-		cmdEndGpuFrameProfile(cmd, pGpuProfiler);
+		barrier = { pRenderTarget, RESOURCE_STATE_RENDER_TARGET, RESOURCE_STATE_PRESENT };
+		cmdResourceBarrier(cmd, 0, NULL, 0, NULL, 1, &barrier);
+		cmdEndGpuFrameProfile(cmd, gGpuProfileToken);
 		endCmd(cmd);
 
-		queueSubmit(pGraphicsQueue, 1, &cmd, pRenderCompleteFence, 1, &pImageAcquiredSemaphore, 1, &pRenderCompleteSemaphore);
-		queuePresent(pGraphicsQueue, pSwapChain, gFrameIndex, 1, &pRenderCompleteSemaphore);
+		QueueSubmitDesc submitDesc = {};
+		submitDesc.mCmdCount = 1;
+		submitDesc.mSignalSemaphoreCount = 1;
+		submitDesc.mWaitSemaphoreCount = 1;
+		submitDesc.ppCmds = &cmd;
+		submitDesc.ppSignalSemaphores = &pRenderCompleteSemaphore;
+		submitDesc.ppWaitSemaphores = &pImageAcquiredSemaphore;
+		submitDesc.pSignalFence = pRenderCompleteFence;
+		queueSubmit(pGraphicsQueue, &submitDesc);
+		QueuePresentDesc presentDesc = {};
+		presentDesc.mIndex = swapchainImageIndex;
+		presentDesc.mWaitSemaphoreCount = 1;
+		presentDesc.ppWaitSemaphores = &pRenderCompleteSemaphore;
+		presentDesc.pSwapChain = pSwapChain;
+		presentDesc.mSubmitDone = true;
+		queuePresent(pGraphicsQueue, &presentDesc);
 		flipProfiler();
+
+		gFrameIndex = (gFrameIndex + 1) % gImageCount;
 	}
 
 	const char* GetName() { return "05_FontRendering"; }
@@ -531,7 +517,7 @@ class FontRendering: public IApp
 		const float SCREEN_WIDTH = (float)mSettings.mWidth;
 		const float SCREEN_HEIGHT = (float)mSettings.mHeight;
 
-		float2 dpiScaling = getDpiScale();
+		//float2 dpiScaling = getDpiScale();
 
 		// [0]: screen space distance from top of the window to the title
 		// [1]: screen space distance between areas of title and ROW 1

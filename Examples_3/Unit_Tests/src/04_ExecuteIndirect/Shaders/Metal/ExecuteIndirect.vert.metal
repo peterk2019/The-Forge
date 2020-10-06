@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -25,10 +25,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-struct UniformBlockData
-{
-    float4x4 viewProj;
-};
+#include "argument_buffers.h"
 
 struct VsIn
 {
@@ -44,34 +41,11 @@ struct PsIn
     float4 albedo;
 };
 
-struct AsteroidDynamic
-{
-	float4x4 transform;
-    uint indexStart;
-    uint indexEnd;
-    uint padding[2];
-};
-
-struct AsteroidStatic
-{
-	float4 rotationAxis;
-	float4 surfaceColor;
-	float4 deepColor;
-
-	float scale;
-	float orbitSpeed;
-	float rotationSpeed;
-
-    uint textureID;
-    uint vertexStart;
-    uint padding[3];
-};
-
-vertex PsIn stageMain(VsIn In                                      [[stage_in]],
-                      uint instanceID                              [[instance_id]],
-                      constant UniformBlockData& uniformBlock      [[buffer(1)]],
-                      constant AsteroidStatic* asteroidsStatic     [[buffer(2)]],
-                      constant AsteroidDynamic* asteroidsDynamic   [[buffer(3)]])
+vertex PsIn stageMain(VsIn In                                       [[stage_in]],
+                      uint instanceID                               [[instance_id]],
+                      ExecuteIndirectArgData,
+                      ExecuteIndirectArgDataPerFrame
+)
 {
     
     PsIn result;

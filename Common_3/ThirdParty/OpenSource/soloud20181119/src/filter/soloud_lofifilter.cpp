@@ -26,7 +26,7 @@ freely, subject to the following restrictions:
 #include <string.h>
 #include "soloud.h"
 #include "soloud_lofifilter.h"
-#include "../../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../../OS/Interfaces/IMemory.h"
 
 namespace SoLoud
 {
@@ -91,6 +91,6 @@ namespace SoLoud
 
 	LofiFilterInstance *LofiFilter::createInstance()
 	{
-		return conf_new(LofiFilterInstance, this);
+		return tf_new(LofiFilterInstance, this);
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -21,336 +21,310 @@
  * specific language governing permissions and limitations
  * under the License.
 */
+
 #pragma once
 
-//Use Virtual FileSystem
-//#define USE_VFS
-
 #include "../Interfaces/IOperatingSystem.h"
-#include "../../ThirdParty/OpenSource/EASTL/string.h"
-#include "../../ThirdParty/OpenSource/EASTL/vector.h"
 
-typedef void* FileHandle;
-typedef void (*FileDialogCallbackFn)(eastl::string url, void* userData);
-/************************************************************************************************
-* If you change this class please check the following projects to ensure you don't break them:  *
-* 1) BlackFootBlade																			 *
-* 2) Aura																					   *
-* 3) Gladiator																				  *
-* Also ask yourself if all of those projects will need the change, or just the one you're work- *
-* ing on. If it is just the one you're working on please add it to an inherited version of the  *
-* class within your project.																	*
-************************************************************************************************/
+#define FS_MAX_PATH 256
 
-/// Low level file system interface providing basic file I/O operations
-/// Implementations platform dependent
-FileHandle open_file(const char* filename, const char* flags);
-bool       close_file(FileHandle handle);
-void       flush_file(FileHandle handle);
-size_t     read_file(void* buffer, size_t byteCount, FileHandle handle);
-bool       seek_file(FileHandle handle, long offset, int origin);
-long       tell_file(FileHandle handle);
-size_t     write_file(const void* buffer, size_t byteCount, FileHandle handle);
-time_t     get_file_last_modified_time(const char* _fileName);
-time_t     get_file_last_accessed_time(const char* _fileName);
-time_t     get_file_creation_time(const char* _fileName);
-
-eastl::string get_current_dir();
-eastl::string get_exe_path();
-eastl::string get_app_prefs_dir(const char* org, const char* app);
-eastl::string get_user_documents_dir();
-void            get_files_with_extension(const char* dir, const char* ext, eastl::vector<eastl::string>& filesOut);
-void            get_sub_directories(const char* dir, eastl::vector<eastl::string>& subDirectoriesOut);
-bool            file_exists(const char* fileFullPath);
-bool            absolute_path(const char* fileFullPath);
-bool            copy_file(const char* src, const char* dst);
-void            open_file_dialog(
-			   const char* title, const char* dir, FileDialogCallbackFn callback, void* userData, const char* fileDesc,
-			   const eastl::vector<eastl::string>& fileExtensions);
-void save_file_dialog(
-	const char* title, const char* dir, FileDialogCallbackFn callback, void* userData, const char* fileDesc,
-	const eastl::vector<eastl::string>& fileExtensions);
-#if defined(TARGET_IOS)
-void add_uti_to_map(const char* extension, const char* uti);
+#ifdef __cplusplus
+extern "C"
+{
 #endif
 
-void set_current_dir(const char* path);
-
-enum FileMode
+typedef enum ResourceMount
 {
-	FM_Read = 1,
-	FM_Write = FM_Read << 1,
-	FM_Append = FM_Write << 1,
-	FM_Binary = FM_Append << 1,
-	FM_ReadWrite = FM_Read | FM_Write,
-	FM_ReadAppend = FM_Read | FM_Append,
-	FM_WriteBinary = FM_Write | FM_Binary,
-	FM_ReadBinary = FM_Read | FM_Binary
-};
+	/// Installed game directory / bundle resource directory
+	RM_CONTENT = 0,
+	/// For storing debug data such as log files. To be used only during development
+	RM_DEBUG,
+	/// Save game data mount 0
+	RM_SAVE_0,
+	RM_COUNT,
+} ResourceMount;
 
-// TODO : File System should be reworked so that we don't need all of these vague enums.
-//	One suggesting is to just have a list of directories to check for each resource type.
-//	Applications would then just need to add the paths they need to that list.
-enum FSRoot
+typedef enum ResourceDirectory
 {
-	// universal binary shader place
-	FSR_BinShaders = 0,
-	// the main applications shader source directory
-	FSR_SrcShaders,
-	// the main application texture source directory (TODO processed texture folder)
-	FSR_Textures,
+	/// The main application's shader binaries directory
+	RD_SHADER_BINARIES = 0,
+	/// The main application's shader source directory
+	RD_SHADER_SOURCES,
 
-	FSR_Meshes,    // Meshes
-	FSR_Builtin_Fonts,
-	FSR_GpuConfig,
-	FSR_Animation,    // Animation Ozz files
-	FSR_Audio,
-	FSR_OtherFiles,
+	RD_PIPELINE_CACHE,
+	/// The main application's texture source directory (TODO processed texture folder)
+	RD_TEXTURES,
+	RD_MESHES,
+	RD_FONTS,
+	RD_ANIMATIONS,
+	RD_AUDIO,
+	RD_GPU_CONFIG,
+	RD_LOG,
+	RD_SCRIPTS,
+	RD_OTHER_FILES,
 
-	// libraries will want there own directories
-	// support for upto 100 libraries
-	____fsr_lib_counter_begin = FSR_OtherFiles,
+	// Libraries can have their own directories.
+	// Up to 100 libraries are supported.
+	____rd_lib_counter_begin = RD_OTHER_FILES + 1,
 
 	// Add libraries here
-	FSR_Middleware0,
-	FSR_Middleware1,
-	FSR_Middleware2,
+	RD_MIDDLEWARE_0 = ____rd_lib_counter_begin,
+	RD_MIDDLEWARE_1,
+	RD_MIDDLEWARE_2,
+	RD_MIDDLEWARE_3,
+	RD_MIDDLEWARE_4,
+	RD_MIDDLEWARE_5,
+	RD_MIDDLEWARE_6,
+	RD_MIDDLEWARE_7,
+	RD_MIDDLEWARE_8,
+	RD_MIDDLEWARE_9,
+	RD_MIDDLEWARE_10,
+	RD_MIDDLEWARE_11,
+	RD_MIDDLEWARE_12,
+	RD_MIDDLEWARE_13,
+	RD_MIDDLEWARE_14,
+	RD_MIDDLEWARE_15,
 
-	____fsr_lib_counter_end = ____fsr_lib_counter_begin + 99 * 3,
+	____rd_lib_counter_end = ____rd_lib_counter_begin + 99 * 2,
+	RD_COUNT
+} ResourceDirectory;
 
-	FSR_Absolute,
-
-	FSR_Count
-};
-
-enum SeekDir
+typedef enum SeekBaseOffset
 {
-	SEEK_DIR_BEGIN = 0,
-	SEEK_DIR_CUR,
-	SEEK_DIR_END,
-};
+	SBO_START_OF_FILE = 0,
+	SBO_CURRENT_POSITION,
+	SBO_END_OF_FILE,
+} SeekBaseOffset;
 
-/// Abstract stream for reading
-class Deserializer
+typedef enum FileMode
 {
-	public:
-	Deserializer();
-	Deserializer(unsigned size);
-	virtual ~Deserializer();
+	FM_READ = 1 << 0,
+	FM_WRITE = 1 << 1,
+	FM_APPEND = 1 << 2,
+	FM_BINARY = 1 << 3,
+	FM_ALLOW_READ = 1 << 4, // Read Access to Other Processes, Usefull for Log System
+	FM_READ_WRITE = FM_READ | FM_WRITE,
+	FM_READ_APPEND = FM_READ | FM_APPEND,
+	FM_WRITE_BINARY = FM_WRITE | FM_BINARY,
+	FM_READ_BINARY = FM_READ | FM_BINARY,
+	FM_APPEND_BINARY = FM_APPEND | FM_BINARY,
+	FM_READ_WRITE_BINARY = FM_READ | FM_WRITE | FM_BINARY,
+	FM_READ_APPEND_BINARY = FM_READ | FM_APPEND | FM_BINARY,
+	FM_WRITE_ALLOW_READ = FM_WRITE | FM_ALLOW_READ,
+	FM_APPEND_ALLOW_READ = FM_READ | FM_ALLOW_READ,
+	FM_READ_WRITE_ALLOW_READ = FM_READ | FM_WRITE | FM_ALLOW_READ,
+	FM_READ_APPEND_ALLOW_READ = FM_READ | FM_APPEND | FM_ALLOW_READ,
+	FM_WRITE_BINARY_ALLOW_READ = FM_WRITE | FM_BINARY | FM_ALLOW_READ,
+	FM_APPEND_BINARY_ALLOW_READ = FM_APPEND | FM_BINARY | FM_ALLOW_READ,
+	FM_READ_WRITE_BINARY_ALLOW_READ = FM_READ | FM_WRITE | FM_BINARY | FM_ALLOW_READ,
+	FM_READ_APPEND_BINARY_ALLOW_READ = FM_READ | FM_APPEND | FM_BINARY | FM_ALLOW_READ
+} FileMode;
 
-	virtual unsigned               Read(void* dest, unsigned size) = 0;
-	virtual unsigned               Seek(unsigned position, SeekDir seekDir = SEEK_DIR_BEGIN) = 0;
-    virtual unsigned               Tell() = 0;
-	virtual const eastl::string& GetName() const = 0;
-	virtual unsigned               GetChecksum();
+typedef struct IFileSystem IFileSystem;
 
-	unsigned        GetPosition() const { return mPosition; }
-	unsigned        GetSize() const { return mSize; }
-	bool            IsEof() const { return mPosition >= mSize; }
-	int64_t         ReadInt64();
-	int32_t         ReadInt();
-	int16_t         ReadShort();
-	int8_t          ReadByte();
-	uint32_t        ReadUInt();
-	uint16_t        ReadUShort();
-	uint8_t         ReadUByte();
-	bool            ReadBool();
-	float           ReadFloat();
-	double          ReadDouble();
-	float2          ReadVector2();
-	float3          ReadVector3();
-	float3          ReadPackedVector3(float maxAbsCoord);
-	float4          ReadVector4();
-	eastl::string ReadString();
-	eastl::string ReadFileID();
-	eastl::string ReadLine();
-
-	protected:
-	unsigned mPosition;
-	unsigned mSize;
-};
-
-/// Abstract stream for writing
-class Serializer
+typedef struct MemoryStream
 {
-	public:
-	virtual ~Serializer();
+	uint8_t* pBuffer;
+	size_t   mCursor;
+	bool     mOwner;
+} MemoryStream;
 
-	virtual unsigned Write(const void* data, unsigned size) = 0;
-
-	bool WriteInt64(int64_t value);
-	bool WriteInt(int32_t value);
-	bool WriteShort(int16_t value);
-	bool WriteByte(int8_t value);
-	bool WriteUInt(uint32_t value);
-	bool WriteUShort(uint16_t value);
-	bool WriteUByte(uint8_t value);
-	bool WriteBool(bool value);
-	bool WriteFloat(float value);
-	bool WriteDouble(double value);
-	bool WriteVector2(const float2& value);
-	bool WriteVector3(const float3& value);
-	bool WritePackedVector3(const float3& value, float maxAbsCoord);
-	bool WriteVector4(const float4& value);
-	bool WriteString(const eastl::string& value);
-	bool WriteFileID(const eastl::string& value);
-	bool WriteLine(const eastl::string& value);
-};
-
-/// Text / binary file loaded from disk
-class File: public Deserializer, public Serializer
+typedef struct FileStream
 {
-	public:
-	File();
-
-	virtual bool Open(const eastl::string& fileName, FileMode mode, FSRoot root);
-	virtual bool Close();
-	virtual void Flush();
-
-	unsigned Read(void* dest, unsigned size) override;
-	unsigned Seek(unsigned position, SeekDir seekDir = SEEK_DIR_BEGIN) override;
-    unsigned Tell() override;
-	unsigned Write(const void* data, unsigned size) override;
-
-	eastl::string ReadText();
-
-	virtual unsigned             GetChecksum() override;
-	virtual const eastl::string& GetName() const override { return mFileName; }
-	virtual FileMode             GetMode() const { return mMode; }
-	virtual bool                 IsOpen() const { return pHandle != NULL; }
-	virtual bool                 IsReadOnly() const { return !(mMode & FileMode::FM_Write || mMode & FileMode::FM_Append); }
-	virtual bool                 IsWriteOnly() const { return !(mMode & FileMode::FM_Read); }
-	virtual void*                GetHandle() const { return pHandle; }
-
-	protected:
-	eastl::string mFileName;
-	FileMode        mMode;
-	FileHandle      pHandle;
-	unsigned        mOffset;
-	unsigned        mChecksum;
-	bool            mReadSyncNeeded;
-	bool            mWriteSyncNeeded;
-};
-
-/// Memory area simulating a stream
-class MemoryBuffer: public Deserializer, public Serializer
-{
-	public:
-	MemoryBuffer(void* data, unsigned size);
-	MemoryBuffer(const void* data, unsigned size);
-
-	const eastl::string& GetName() const override { return mName; }
-
-	unsigned Read(void* dest, unsigned size) override;
-	unsigned Seek(unsigned position, SeekDir seekDir = SEEK_DIR_BEGIN) override;
-    unsigned Tell() override;
-	unsigned Write(const void* data, unsigned size) override;
-
-	unsigned char* GetData() { return pBuffer; }
-	bool           IsReadOnly() { return mReadOnly; }
-
-	private:
-	eastl::string mName;
-	unsigned char*  pBuffer;
-	bool            mReadOnly;
-};
-
-/// High level platform independent file system
-class FileSystem
-{
-	public:
-	static unsigned GetFileSize(FileHandle handle);
-	// Allows to modify root paths at runtime
-	static void SetRootPath(FSRoot root, const eastl::string& rootPath);
-	// Reverts back to App static defined pszRoots[]
-	static void     ClearModifiedRootPaths();
-	static time_t GetLastModifiedTime(const eastl::string& _fileName);
-	static time_t GetLastAccessedTime(const eastl::string& _fileName);
-	static time_t GetCreationTime(const eastl::string& _fileName);
-
-	// First looks it root exists in m_ModifiedRootPaths
-	// otherwise uses App static defined pszRoots[]
-	static eastl::string FixPath(const eastl::string& pszFileName, FSRoot root);
-	static eastl::string GetRootPath(FSRoot root);
-	static bool            FileExists(const eastl::string& pszFileName, FSRoot root);
-
-	static eastl::string GetCurrentDir() { return AddTrailingSlash(get_current_dir()); }
-	static eastl::string GetProgramDir() { return GetPath(get_exe_path()); }
-	static eastl::string GetProgramFileName() { return GetFileName(get_exe_path()); }
-	static eastl::string GetUserDocumentsDir() { return AddTrailingSlash(get_user_documents_dir()); }
-	static eastl::string GetAppPreferencesDir(const eastl::string& org, const eastl::string& app)
+	IFileSystem*      pIO;
+	union
 	{
-		return AddTrailingSlash(get_app_prefs_dir(org.c_str(), app.c_str()));
-	}
-	static void GetFilesWithExtension(const eastl::string& dir, const eastl::string& ext, eastl::vector<eastl::string>& files)
-	{
-		get_files_with_extension(dir.c_str(), ext.c_str(), files);
-	}
-	static void GetSubDirectories(const eastl::string& dir, eastl::vector<eastl::string>& subDirectories)
-	{
-		get_sub_directories(dir.c_str(), subDirectories);
-	}
-
-	static void SetCurrentDir(const eastl::string& path) { set_current_dir(path.c_str()); }
-
-	static eastl::string CombinePaths(const eastl::string& path1, const eastl::string& path2);
-	static void SplitPath(
-		const eastl::string& fullPath, eastl::string* pathName, eastl::string* fileName, eastl::string* extension,
-		bool lowercaseExtension = true);
-	static eastl::string GetPath(const eastl::string& fullPath);
-	static eastl::string GetFileName(const eastl::string& fullPath);
-	static eastl::string GetExtension(const eastl::string& fullPath, bool lowercaseExtension = true);
-	static eastl::string GetFileNameAndExtension(const eastl::string& fullPath, bool lowercaseExtension = false);
-	static eastl::string ReplaceExtension(const eastl::string& fullPath, const eastl::string& newExtension);
-	static eastl::string AddTrailingSlash(const eastl::string& pathName);
-	static eastl::string RemoveTrailingSlash(const eastl::string& pathName);
-	static eastl::string GetParentPath(const eastl::string& pathName);
-	static eastl::string GetInternalPath(const eastl::string& pathName);
-	static eastl::string GetNativePath(const eastl::string& pathName);
-
-	static bool CopyFile(const eastl::string& src, const eastl::string& dst, bool bFailIfExists);
-	static bool DirExists(const eastl::string& pathName);
-	static bool CreateDir(const eastl::string& pathName);
-	static int  SystemRun(const eastl::string& fileName, const eastl::vector<eastl::string>& arguments, eastl::string stdOut = "");
-	static bool Delete(const eastl::string& fileName);
-
-	static void OpenFileDialog(
-		const eastl::string& title, const eastl::string& dir, FileDialogCallbackFn callback, void* userData,
-		const eastl::string& fileDesc, const eastl::vector<eastl::string>& allowedExtentions)
-	{
-		open_file_dialog(title.c_str(), dir.c_str(), callback, userData, fileDesc.c_str(), allowedExtentions);
-	}
-
-	static void SaveFileDialog(
-		const eastl::string& title, const eastl::string& dir, FileDialogCallbackFn callback, void* userData,
-		const eastl::string& fileDesc, const eastl::vector<eastl::string>& allowedExtentions)
-	{
-		save_file_dialog(title.c_str(), dir.c_str(), callback, userData, fileDesc.c_str(), allowedExtentions);
-	}
-
-
-	class Watcher
-	{
-		public:
-		struct Data;
-		enum
-		{
-			EVENT_MODIFIED = 1,
-			EVENT_ACCESSED = 2,
-			EVENT_CREATED = 4,
-			EVENT_DELETED = 8,
-		};
-		typedef void (*Callback)(const char* path, uint32_t action);
-
-		Watcher(const char* pWatchPath, FSRoot root, uint32_t eventMask, Callback callback);
-		~Watcher();
-
-		private:
-		Data* pData;
+		FILE*         pFile;
+#if defined(__ANDROID__)
+		AAsset*       pAsset;
+#elif defined(NX64)
+		FileNX        mStruct;
+#endif
+		MemoryStream  mMemory;
+		void*         pUser;
 	};
+	ssize_t           mSize;
+	FileMode          mMode;
+} FileStream;
 
-	private:
-	// The following root paths are the ones that were modified at run-time
-	static eastl::string mModifiedRootPaths[FSRoot::FSR_Count];
-	static eastl::string mProgramDir;
-};
+typedef struct FileSystemInitDesc
+{
+	const char* pAppName;
+	void*       pPlatformData;
+	const char* pResourceMounts[RM_COUNT] = {};
+} FileSystemInitDesc;
+
+typedef struct IFileSystem
+{
+	bool        (*Open)(IFileSystem* pIO, const ResourceDirectory resourceDir, const char* fileName, FileMode mode, FileStream* pOut);
+	bool        (*Close)(FileStream* pFile);
+	size_t      (*Read)(FileStream* pFile, void* outputBuffer, size_t bufferSizeInBytes);
+	size_t      (*Write)(FileStream* pFile, const void* sourceBuffer, size_t byteCount);
+	bool        (*Seek)(FileStream* pFile, SeekBaseOffset baseOffset, ssize_t seekOffset);
+	ssize_t     (*GetSeekPosition)(const FileStream* pFile);
+	ssize_t     (*GetFileSize)(const FileStream* pFile);
+	bool        (*Flush)(FileStream* pFile);
+	bool        (*IsAtEnd)(const FileStream* pFile);
+	const char* (*GetResourceMount)(ResourceMount mount);
+
+	void*       pUser;
+} IFileSystem;
+
+/// Default file system using C File IO or Bundled File IO (Android) based on the ResourceDirectory
+extern IFileSystem* pSystemFileIO;
+/************************************************************************/
+// MARK: - Initialization
+/************************************************************************/
+/// Initializes the FileSystem API
+bool initFileSystem(FileSystemInitDesc* pDesc);
+
+/// Frees resources associated with the FileSystem API
+void exitFileSystem();
+/************************************************************************/
+// MARK: - File IO
+/************************************************************************/
+/// Opens the file at `filePath` using the mode `mode`, returning a new FileStream that can be used
+/// to read from or modify the file. May return NULL if the file could not be opened.
+bool fsOpenStreamFromPath(const ResourceDirectory resourceDir, const char* fileName, FileMode mode, FileStream* pOut);
+
+/// Opens a memory buffer as a FileStream, returning a stream that must be closed with `fsCloseStream`.
+bool fsOpenStreamFromMemory(const void* buffer, size_t bufferSize, FileMode mode, bool owner, FileStream* pOut);
+
+/// Closes and invalidates the file stream.
+bool fsCloseStream(FileStream* stream);
+
+/// Returns the number of bytes read.
+size_t fsReadFromStream(FileStream* stream, void* outputBuffer, size_t bufferSizeInBytes);
+
+/// Reads at most `bufferSizeInBytes` bytes from sourceBuffer and writes them into the file.
+/// Returns the number of bytes written.
+size_t fsWriteToStream(FileStream* stream, const void* sourceBuffer, size_t byteCount);
+
+/// Seeks to the specified position in the file, using `baseOffset` as the reference offset.
+bool fsSeekStream(FileStream* stream, SeekBaseOffset baseOffset, ssize_t seekOffset);
+
+/// Gets the current seek position in the file.
+ssize_t fsGetStreamSeekPosition(const FileStream* stream);
+
+/// Gets the current size of the file. Returns -1 if the size is unknown or unavailable.
+ssize_t fsGetStreamFileSize(const FileStream* stream);
+
+/// Flushes all writes to the file stream to the underlying subsystem.
+bool fsFlushStream(FileStream* stream);
+
+/// Returns whether the current seek position is at the end of the file stream.
+bool fsStreamAtEnd(const FileStream* stream);
+/************************************************************************/
+// MARK: - Minor filename manipulation
+/************************************************************************/
+/// Appends `pathComponent` to `basePath`, returning a new Path for which the caller has ownership.
+/// `basePath` is assumed to be a directory.
+void fsAppendPathComponent(const char* basePath, const char* pathComponent, char* output);
+
+/// Appends `newExtension` to `basePath`, returning a new Path for which the caller has ownership.
+/// If `basePath` already has an extension, `newExtension` will be appended to the end.
+void fsAppendPathExtension(const char* basePath, const char* newExtension, char* output);
+
+/// Appends `newExtension` to `basePath`, returning a new Path for which the caller has ownership.
+/// If `basePath` already has an extension, its previous extension will be replaced by `newExtension`.
+void fsReplacePathExtension(const char* path, const char* newExtension, char* output);
+
+/// Copies `path`'s parent path, returning a new Path for which the caller has ownership. May return NULL if `path` has no parent.
+void fsGetParentPath(const char* path, char* output);
+
+/// Returns `path`'s file name as a PathComponent. The return value is guaranteed to live for as long as `path` lives.
+void fsGetPathFileName(const char* path, char* output);
+
+/// Returns `path`'s extension, excluding the '.'. The return value is guaranteed to live for as long as `path` lives.
+/// The returned PathComponent's buffer is guaranteed to either be NULL or a NULL-terminated string.
+void fsGetPathExtension(const char* path, char* output);
+/************************************************************************/
+// MARK: - Directory queries
+/************************************************************************/
+/// Returns location set for resource directory in fsSetPathForResourceDir
+const char* fsGetResourceDirectory(ResourceDirectory resourceDir);
+
+/// Sets the relative path for `resourceDir` on `fileSystem` to `relativePath`, where the base path is the root resource directory path.
+/// If `fsSetResourceDirRootPath` is called after this function, this function must be called again to ensure `resourceDir`'s path
+/// is relative to the new root path.
+///
+/// NOTE: This call is not thread-safe. It is the application's responsibility to ensure that
+/// no modifications to the file system are occurring at the time of this call.
+void fsSetPathForResourceDir(IFileSystem* pIO, ResourceMount mount, ResourceDirectory resourceDir, const char* bundledFolder);
+/************************************************************************/
+// MARK: - File Queries
+/************************************************************************/
+/// Gets the time of last modification for the file at `filePath`. Undefined if no file exists at `filePath`.
+time_t fsGetLastModifiedTime(ResourceDirectory resourceDir, const char* fileName);
+/************************************************************************/
+// MARK: - FileMode
+/************************************************************************/
+static inline FileMode fsFileModeFromString(const char* modeStr)
+{
+	if (strcmp(modeStr, "r") == 0)
+	{
+		return FM_READ;
+	}
+	if (strcmp(modeStr, "w") == 0)
+	{
+		return FM_WRITE;
+	}
+	if (strcmp(modeStr, "a") == 0)
+	{
+		return FM_APPEND;
+	}
+	if (strcmp(modeStr, "rb") == 0)
+	{
+		return FM_READ_BINARY;
+	}
+	if (strcmp(modeStr, "wb") == 0)
+	{
+		return FM_WRITE_BINARY;
+	}
+	if (strcmp(modeStr, "ab") == 0)
+	{
+		return FM_APPEND_BINARY;
+	}
+	if (strcmp(modeStr, "r+") == 0)
+	{
+		return FM_READ_WRITE;
+	}
+	if (strcmp(modeStr, "a+") == 0)
+	{
+		return FM_READ_APPEND;
+	}
+	if (strcmp(modeStr, "rb+") == 0)
+	{
+		return FM_READ_WRITE_BINARY;
+	}
+	if (strcmp(modeStr, "ab+") == 0)
+	{
+		return FM_READ_APPEND_BINARY;
+	}
+
+	return (FileMode)0;
+}
+
+/// Converts `mode` to a string which is compatible with the C standard library conventions for `fopen`
+/// parameter strings.
+static inline FORGE_CONSTEXPR const char* fsFileModeToString(FileMode mode)
+{
+	mode = (FileMode)(mode & ~FM_ALLOW_READ);
+	switch (mode)
+	{
+	case FM_READ: return "r";
+	case FM_WRITE: return "w";
+	case FM_APPEND: return "a";
+	case FM_READ_BINARY: return "rb";
+	case FM_WRITE_BINARY: return "wb";
+	case FM_APPEND_BINARY: return "ab";
+	case FM_READ_WRITE: return "r+";
+	case FM_READ_APPEND: return "a+";
+	case FM_READ_WRITE_BINARY: return "rb+";
+	case FM_READ_APPEND_BINARY: return "ab+";
+	default: return "r";
+	}
+}
+#ifdef __cplusplus
+} // extern "C"
+#endif

@@ -24,7 +24,7 @@ freely, subject to the following restrictions:
 
 #include "soloud.h"
 #include "soloud_dcremovalfilter.h"
-#include "../../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../../OS/Interfaces/IMemory.h"
 
 namespace SoLoud
 {
@@ -46,8 +46,8 @@ namespace SoLoud
 		if (mBuffer == 0)
 		{
 			mBufferLength = (int)ceil(mParent->mLength * aSamplerate);
-			mBuffer = (float*)conf_calloc(mBufferLength * aChannels, sizeof(float));
-			mTotals = (float*)conf_calloc(aChannels, sizeof(float));
+			mBuffer = (float*)tf_calloc(mBufferLength * aChannels, sizeof(float));
+			mTotals = (float*)tf_calloc(aChannels, sizeof(float));
 			unsigned int i;
 			for (i = 0; i < aChannels; i++)
 			{
@@ -84,8 +84,8 @@ namespace SoLoud
 
 	DCRemovalFilterInstance::~DCRemovalFilterInstance()
 	{
-		conf_free(mBuffer);
-		conf_free(mTotals);
+		tf_free(mBuffer);
+		tf_free(mTotals);
 	}
 
 	DCRemovalFilter::DCRemovalFilter()
@@ -106,6 +106,6 @@ namespace SoLoud
 
 	FilterInstance *DCRemovalFilter::createInstance()
 	{
-		return conf_new(DCRemovalFilterInstance, this);
+		return tf_new(DCRemovalFilterInstance, this);
 	}
 }

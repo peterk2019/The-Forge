@@ -29,14 +29,17 @@
 #include "../../../include/ozz/animation/runtime/animation.h"
 
 #include "../../../include/ozz/base/io/archive.h"
-#include "../../../include/ozz/base/log.h"
 #include "../../../include/ozz/base/maths/math_archive.h"
 #include "../../../include/ozz/base/maths/math_ex.h"
 #include "../../../include/ozz/base/memory/allocator.h"
+
+#include "../../EASTL/internal/char_traits.h"
+#include "../../../../../Common_3/OS/Interfaces/ILog.h"
 //CONFFX_END
 
 #include <cassert>
 #include <cstring>
+
 
 // Internal include file
 #define OZZ_INCLUDE_PRIVATE_HEADER  // Allows to include private headers.
@@ -113,7 +116,7 @@ void Animation::Save(ozz::io::OArchive& _archive) const {
   _archive << duration_;
   _archive << static_cast<int32_t>(num_tracks_);
 
-  const size_t name_len = name_ ? std::strlen(name_) : 0;
+  const size_t name_len = name_ ? eastl::CharStrlen(name_) : 0;
   _archive << static_cast<int32_t>(name_len);
 
   const ptrdiff_t translation_count = translations_.count();
@@ -160,8 +163,7 @@ void Animation::Load(ozz::io::IArchive& _archive, uint32_t _version) {
 
   // No retro-compatibility with anterior versions.
   if (_version != 5) {
-    log::Err() << "Unsupported Animation version " << _version << "."
-               << std::endl;
+    LOGF(LogLevel::eERROR, "Unsupported Animation version %d.", _version);
     return;
   }
 

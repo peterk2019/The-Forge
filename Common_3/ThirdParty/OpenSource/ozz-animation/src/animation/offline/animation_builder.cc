@@ -27,14 +27,18 @@
 
 #include "ozz/animation/offline/animation_builder.h"
 
-#include <algorithm>
+#include "../../EASTL/algorithm.h"
+#include "../../EASTL/numeric_limits.h"
+#include "../../EASTL/sort.h"
+
 #include <cassert>
 #include <cstddef>
 #include <cstring>
-#include <limits>
 
 #include "ozz/base/containers/vector.h"
 #include "ozz/base/memory/allocator.h"
+
+#include "../../EASTL/sort.h"
 
 //#include "ozz/base/maths/simd_math.h" //CONFFX_BEGIN
 
@@ -178,7 +182,7 @@ void CopyToAnimation(ozz::Vector<SortingTranslationKey>::Std* _src,
   }
 
   // Sort animation keys to favor cache coherency.
-  std::sort(&_src->front(), (&_src->back()) + 1,
+  eastl::sort(&_src->front(), (&_src->back()) + 1,
             &SortingKeyLess<SortingTranslationKey>);
 
   // Fills output.
@@ -203,7 +207,7 @@ void CopyToAnimation(ozz::Vector<SortingScaleKey>::Std* _src,
   }
 
   // Sort animation keys to favor cache coherency.
-  std::sort(&_src->front(), (&_src->back()) + 1,
+  eastl::sort(&_src->front(), (&_src->back()) + 1,
             &SortingKeyLess<SortingScaleKey>);
 
   // Fills output.
@@ -222,7 +226,7 @@ void CopyToAnimation(ozz::Vector<SortingScaleKey>::Std* _src,
 
 // Compares float absolute values.
 bool LessAbs(float _left, float _right) {
-  return std::abs(_left) < std::abs(_right);
+  return abs(_left) < abs(_right);
 }
 
 // Compresses quaternion to ozz::animation::RotationKey format.
@@ -236,7 +240,7 @@ void CompressQuat(const Quat& _src,
                   ozz::animation::RotationKey* _dest) {
   // Finds the largest quaternion component.
   const float quat[4] = {_src.getX(), _src.getY(), _src.getZ(), _src.getW()};
-  const size_t largest = std::max_element(quat, quat + 4, LessAbs) - quat;
+  const size_t largest = eastl::max_element(quat, quat + 4, LessAbs) - quat;
   assert(largest <= 3);
   _dest->largest = largest & 0x3;
 
@@ -273,7 +277,7 @@ void CopyToAnimation(ozz::Vector<SortingRotationKey>::Std* _src,
   // Note that keys are still sorted per-track at that point, which allows this
   // algorithm to process all consecutive keys.
   //CONFFX_BEGIN
-  size_t track = std::numeric_limits<size_t>::max();
+  size_t track = eastl::numeric_limits<size_t>::max();
   const Quat identity = Quat::identity();
   SortingRotationKey* src = &_src->front();
   for (size_t i = 0; i < src_count; ++i) {
@@ -306,7 +310,7 @@ void CopyToAnimation(ozz::Vector<SortingRotationKey>::Std* _src,
   //CONFFX_END
 
   // Sort.
-  std::sort(array_begin(*_src), array_end(*_src),
+  eastl::sort(array_begin(*_src), array_end(*_src),
             &SortingKeyLess<SortingRotationKey>);
 
   // Fills rotation keys output.

@@ -301,6 +301,8 @@ void drmp3_free(void* p);
 #endif
 #endif  // dr_mp3_h
 
+#include "../../../../../../OS/Interfaces/IFileSystem.h"
+
 
 /////////////////////////////////////////////////////
 //
@@ -2109,8 +2111,8 @@ void drmp3dec_f32_to_s16(const float *in, drmp3_int16 *out, int num_samples)
 #define DR_MP3_DEFAULT_SAMPLE_RATE   44100
 #endif
 
-#include "../../../../OS/Interfaces/ILogManager.h"
-#include "../../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../../OS/Interfaces/ILog.h"
+#include "../../../../OS/Interfaces/IMemory.h"
 
 // Standard library stuff.
 #ifndef DRMP3_ASSERT
@@ -2124,13 +2126,13 @@ void drmp3dec_f32_to_s16(const float *in, drmp3_int16 *out, int num_samples)
 #endif
 #define DRMP3_ZERO_OBJECT(p) DRMP3_ZERO_MEMORY((p), sizeof(*(p)))
 #ifndef DRMP3_MALLOC
-#define DRMP3_MALLOC(sz) conf_malloc((sz))
+#define DRMP3_MALLOC(sz) tf_malloc((sz))
 #endif
 #ifndef DRMP3_REALLOC
-#define DRMP3_REALLOC(p, sz) conf_realloc((p), (sz))
+#define DRMP3_REALLOC(p, sz) tf_realloc((p), (sz))
 #endif
 #ifndef DRMP3_FREE
-#define DRMP3_FREE(p) conf_free((p))
+#define DRMP3_FREE(p) tf_free((p))
 #endif
 
 #define drmp3_assert        DRMP3_ASSERT
@@ -2735,7 +2737,8 @@ drmp3_bool32 drmp3_init_file(drmp3* pMP3, const char* filePath, const drmp3_conf
 {
     FILE* pFile;
 #if defined(_MSC_VER) && _MSC_VER >= 1400
-    if (fopen_s(&pFile, filePath, "rb") != 0) {
+	pFile = (File*)open_file(filepath, "rb");
+    if (pFile != 0) {
         return DRMP3_FALSE;
     }
 #else

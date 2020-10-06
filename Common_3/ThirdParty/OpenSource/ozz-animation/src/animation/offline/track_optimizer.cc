@@ -27,9 +27,6 @@
 
 #include "ozz/animation/offline/track_optimizer.h"
 
-#include <cassert>
-#include <cstddef>
-
 #include "ozz/base/maths/math_ex.h"
 
 #include "ozz/animation/offline/raw_track.h"
@@ -57,8 +54,8 @@ bool Compare(const Quat& _a, const Quat& _b, float _tolerance) {
   // Computes w component of a-1 * b.
   const float diff_w = _a.getX() * _b.getX() + _a.getY() * _b.getY() + _a.getZ() * _b.getZ() + _a.getW() * _b.getW();
   // Converts w back to an angle.
-  const float angle = 2.f * acos(min(std::abs(diff_w), 1.f));
-  return std::abs(angle) <= _tolerance;
+  const float angle = 2.f * acos(min(abs(diff_w), 1.f));
+  return abs(angle) <= _tolerance;
 }
 
 // Returns true if the distance between _a and _b is less than _tolerance.

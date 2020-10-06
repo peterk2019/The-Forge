@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -25,15 +25,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-struct InstanceData
-{
-    float4x4 mvp;
-    float4x4 normalMat;
-    float4 surfaceColor;
-    float4 deepColor;
-    int textureID;
-    uint _pad0[3];
-};
+#include "argument_buffers.h"
 
 struct RootConstantData
 {
@@ -54,11 +46,13 @@ struct PsIn
     float3 albedo;
 };
 
-fragment float4 stageMain(PsIn In                                  [[stage_in]],
-                          constant InstanceData* instanceBuffer    [[buffer(1)]],
-                          constant RootConstantData& rootConstant  [[buffer(2)]],
-                          texture2d_array<float> uTex0             [[texture(0)]],
-                          sampler uSampler0                        [[sampler(0)]])
+fragment float4 stageMain(
+    PsIn In                                    [[stage_in]],
+	texture2d_array<float> uTex0               [[texture(0)]],
+	sampler uSampler0                          [[sampler(0)]],
+    constant InstanceData* instanceBuffer      [[buffer(0)]],
+    constant RootConstantData& rootConstant    [[buffer(1)]]
+)
 {
     const float3 lightDir = -normalize(float3(2,6,1));
     

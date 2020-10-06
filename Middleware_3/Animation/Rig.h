@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -31,12 +31,10 @@
 #include "../../Common_3/ThirdParty/OpenSource/ozz-animation/include/ozz/animation/runtime/skeleton.h"
 #include "../../Common_3/ThirdParty/OpenSource/ozz-animation/include/ozz/animation/runtime/skeleton_utils.h"
 
-#include "../../Common_3/ThirdParty/OpenSource/ozz-animation/include/ozz/base/io/stream.h"
 #include "../../Common_3/ThirdParty/OpenSource/ozz-animation/include/ozz/base/io/archive.h"
-#include "../../Common_3/ThirdParty/OpenSource/ozz-animation/include/ozz/base/log.h"
 #include "../../Common_3/ThirdParty/OpenSource/ozz-animation/include/ozz/base/memory/allocator.h"
 
-#include "../../Common_3/OS/Interfaces/ILogManager.h"
+#include "../../Common_3/OS/Interfaces/ILog.h"
 
 namespace eastl
 {
@@ -49,7 +47,7 @@ class Rig
 {
 	public:
 	// Sets up the rig by loading the skeleton from an ozz skeleton file
-	void Initialize(const char* skeletonFile);
+	void Initialize(const ResourceDirectory resourceDir, const char* fileName);
 
 	// Must be called to clean up the object if it was initialized
 	void Destroy();
@@ -140,9 +138,12 @@ class Rig
 	// Finds the index of the joint with name jointName, if it cannot find it returns -1
 	int FindJoint(const char* jointName);
 
+	// Finds the indexes of joint chain with names joinNames
+	void FindJointChain(const char* jointNames[], size_t numNames, int jointChain[]);
+
 	private:
 	// Load a runtime skeleton from a skeleton.ozz file
-	bool LoadSkeleton(const char* fileName);
+	bool LoadSkeleton(const ResourceDirectory resourceDir, const char* fileName);
 
 	// Runtime skeleton.
 	ozz::animation::Skeleton mSkeleton;

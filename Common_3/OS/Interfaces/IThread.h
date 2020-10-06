@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -28,40 +28,38 @@
 #ifndef _THREAD_H_
 #define _THREAD_H_
 
-#ifndef _WIN32
-#include <pthread.h>
-#endif
-
-#ifndef _WIN32
-#define ThreadID pthread_t
+#if defined(_WIN32)
+typedef unsigned long ThreadID;
+#elif defined(NX64)
 #else
-typedef unsigned ThreadID;
+#include <pthread.h>
+#if !defined(__APPLE__) || defined(TARGET_IOS)
+#define ThreadID pthread_t
+#endif
 #endif
 
-struct AtomicUint
-{
-	AtomicUint();
-	~AtomicUint();
-	unsigned int AtomicIncrement();
-	unsigned int AtomicDecrement();
-	void AtomicStore(unsigned int i);
-
-	volatile unsigned int mAtomicInt;
-};
+#define TIMEOUT_INFINITE UINT32_MAX
 
 /// Operating system mutual exclusion primitive.
 struct Mutex
 {
-	Mutex();
-	~Mutex();
+	static const uint32_t kDefaultSpinCount = 1500;
+	
+	bool Init(uint32_t spinCount = kDefaultSpinCount, const char* name = NULL);
+	void Destroy();
 
 	void Acquire();
+	bool TryAcquire();
 	void Release();
 
 #ifdef _WIN32
-	void* pHandle;
+	CRITICAL_SECTION mHandle;
+#elif defined(NX64)
+	MutexTypeNX mMutexPlatformNX;
+	uint32_t mSpinCount;
 #else
 	pthread_mutex_t pHandle;
+	uint32_t mSpinCount;
 #endif
 };
 
@@ -80,34 +78,42 @@ struct MutexLock
 
 struct ConditionVariable
 {
-	ConditionVariable();
-	~ConditionVariable();
+	bool Init(const char* name = NULL);
+	void Destroy();
 
-	void Wait(const Mutex& mutex);
-	void Wait(const Mutex& mutex, unsigned md);
-	void Set();
-	void SetAll();
+	void Wait(const Mutex& mutex, uint32_t md = TIMEOUT_INFINITE);
+	void WakeOne();
+	void WakeAll();
 
-#ifdef _WIN32
+#if defined(_WIN32)
 	void* pHandle;
+#elif defined(NX64)
+	ConditionVariableTypeNX mCondPlatformNX;	
 #else
 	pthread_cond_t  pHandle;
 #endif
 };
 
-typedef void (*ThreadFunction)(void*);
+typedef void(*ThreadFunction)(void*);
 
 /// Work queue item.
 struct ThreadDesc
 {
+#if defined(NX64)
+	ThreadHandle hThread;
+	void *pThreadStack;
+	const char* pThreadName;
+	int preferredCore;
+	bool migrateEnabled;
+#endif
 	/// Work item description and thread index (Main thread => 0)
 	ThreadFunction pFunc;
 	void*          pData;
 };
 
-#ifdef _WIN32
+#if defined(_WIN32)
 typedef void* ThreadHandle;
-#else
+#elif !defined(NX64)
 typedef pthread_t ThreadHandle;
 #endif
 
@@ -129,7 +135,11 @@ struct Thread
 
 // Max thread name should be 15 + null character
 #ifndef MAX_THREAD_NAME_LENGTH
-#define MAX_THREAD_NAME_LENGTH 15
+#define MAX_THREAD_NAME_LENGTH 31
+#endif
+
+#ifdef _WIN32
+void sleep(unsigned mSec);
 #endif
 
 #endif

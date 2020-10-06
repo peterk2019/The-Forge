@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  * 
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -25,10 +25,6 @@
 #include "packing.h"
 #include "shader_defs.h"
 
-#ifndef CONF_EARLY_DEPTH_STENCIL
-#define CONF_EARLY_DEPTH_STENCIL
-#endif
-
 struct VsInOpaque
 {
     float3 position : POSITION;
@@ -39,7 +35,7 @@ struct PsInOpaque
     float4 position : SV_Position;
 };
 
-ConstantBuffer<PerFrameConstants> uniforms : register(b0);
+ConstantBuffer<PerFrameConstants> uniforms : register(b0, UPDATE_FREQ_PER_FRAME);
 
 PsInOpaque main(VsInOpaque In)
 {

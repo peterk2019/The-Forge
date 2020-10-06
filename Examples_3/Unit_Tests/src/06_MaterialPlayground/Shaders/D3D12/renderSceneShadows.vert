@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019 Confetti Interactive Inc.
+ * Copyright (c) 2019 The Forge Interactive Inc.
  * 
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -22,11 +22,11 @@
  * under the License.
 */
 
-cbuffer cbCamera : register(b0) 
+cbuffer cbCamera : register(b0, UPDATE_FREQ_PER_FRAME) 
 {
 	float4x4 projView;
 }
-cbuffer cbObject : register(b1, space2)
+cbuffer cbObject : register(b1, UPDATE_FREQ_PER_DRAW)
 {
 	float4x4 worldMat;
 }

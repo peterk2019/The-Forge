@@ -29,12 +29,14 @@
 #include "../../../include/ozz/animation/runtime/skeleton.h"
 #include <cstring>
 #include "../../../include/ozz/base/io/archive.h"
-#include "../../../include/ozz/base/log.h"
 #include "../../../include/ozz/base/maths/math_ex.h"
 #include "../../../include/ozz/base/maths/soa_math_archive.h"
 #include "../../../include/ozz/base/memory/allocator.h"
 
+#include "../../../../../Common_3/OS/Interfaces/ILog.h"
 #include "../../../../../Common_3/OS/Math/MathTypes.h"
+
+#include "../../EASTL/internal/char_traits.h"
 //CONFFX_END
 
 namespace ozz {
@@ -160,7 +162,7 @@ void Skeleton::Save(ozz::io::OArchive& _archive) const {
   // joint_names_[0].
   size_t chars_count = 0;
   for (int i = 0; i < num_joints; ++i) {
-    chars_count += (std::strlen(joint_names_[i]) + 1) * sizeof(char);
+    chars_count += (eastl::CharStrlen(joint_names_[i]) + 1) * sizeof(char);
   }
   _archive << static_cast<int32_t>(chars_count);
   _archive << ozz::io::MakeArray(joint_names_[0], chars_count);
@@ -177,8 +179,7 @@ void Skeleton::Load(ozz::io::IArchive& _archive, uint32_t _version) {
   Deallocate();
 
   if (_version != 1) {
-    log::Err() << "Unsupported Skeleton version " << _version << "."
-               << std::endl;
+    LOGF(LogLevel::eERROR, "Unsupported Skeleton version %d.", _version);
     return;
   }
 
@@ -204,7 +205,7 @@ void Skeleton::Load(ozz::io::IArchive& _archive, uint32_t _version) {
   // read memory past the end of the buffer.
   for (int i = 0; i < num_joints - 1; ++i) {
     joint_names_[i] = cursor;
-    cursor += std::strlen(joint_names_[i]) + 1;
+    cursor += eastl::CharStrlen(joint_names_[i]) + 1;
   }
   // num_joints is > 0, as this was tested at the beginning of the function.
   joint_names_[num_joints - 1] = cursor;

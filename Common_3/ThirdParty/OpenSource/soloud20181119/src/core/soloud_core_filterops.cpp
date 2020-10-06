@@ -23,7 +23,7 @@ freely, subject to the following restrictions:
 */
 
 #include "soloud_internal.h"
-#include "../../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../../OS/Interfaces/IMemory.h"
 
 // Core operations related to filters
 
@@ -35,7 +35,7 @@ namespace SoLoud
 			return;
 
 		lockAudioMutex();
-		conf_delete(mFilterInstance[aFilterId]);
+		tf_delete(mFilterInstance[aFilterId]);
 		mFilterInstance[aFilterId] = 0;
 		
 		mFilter[aFilterId] = aFilter;

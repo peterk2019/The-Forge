@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  * 
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -36,12 +36,12 @@
 
 RWTexture2D<float4> outputTexture : register(u1);
 
-cbuffer uniformBlock : register(b0) 
+cbuffer uniformBlock : register(b0, UPDATE_FREQ_PER_FRAME) 
 {
 	float4x4 mvp;
 	float4 c_diffuse;  // diffuse shading color
 	float4 c_mu;       // julia quaternion parameter
-	float  c_epsilon;  // julia detail  	
+	float  c_epsilon;  // julia detail
 	float  zoom;
 
 	int    c_width;	   // size view port
@@ -206,7 +206,7 @@ float intersectQJulia(inout float3 rO, float3 rD, float4 c, float epsilon)
 	// Intersection testing finishes if we're close enough to the surface
 	// (i.e., we're inside the epsilon isosurface of the distance estimator
 	// function) or have left the bounding sphere.
-
+	[unroll(64)]
 	while (dist >= epsilon && rd < BOUNDING_RADIUS_2)
 	{
 		float4 z = float4(rO, 0);         // iterate on the point at the current ray origin.  We

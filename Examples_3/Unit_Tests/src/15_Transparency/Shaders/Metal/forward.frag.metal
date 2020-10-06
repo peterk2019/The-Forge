@@ -2,12 +2,10 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#include "argument_buffers.h"
+
 struct Fragment_Shader
 {
-#ifndef MAX_NUM_OBJECTS
-#define MAX_NUM_OBJECTS 64
-#endif
-
 #define SPECULAR_EXP 10.0
 #if USE_SHADOWS!=0
     texture2d<float> VSM;
@@ -52,51 +50,19 @@ struct Fragment_Shader
     };
 #endif
 
-    struct Material
-    {
-        float4 Color;
-        float4 Transmission;
-        float RefractionRatio;
-        float Collimation;
-		float2 Padding;
-        uint TextureFlags;
-        uint AlbedoTexID;
-        uint MetallicTexID;
-        uint RoughnessTexID;
-        uint EmissiveTexID;
-    };
-    struct Uniforms_LightUniformBlock
-    {
-        float4x4 lightViewProj;
-        float4 lightDirection;
-        float4 lightColor;
-    };
     constant Uniforms_LightUniformBlock & LightUniformBlock;
-    struct Uniforms_CameraUniform
-    {
-        float4x4 camViewProj;
-        float4x4 camViewMat;
-        float4 camClipInfo;
-        float4 camPosition;
-    };
     constant Uniforms_CameraUniform & CameraUniform;
-    struct Uniforms_MaterialUniform
-    {
-        Material Materials[MAX_NUM_OBJECTS];
-    };
     constant Uniforms_MaterialUniform & MaterialUniform;
 
-    struct Uniforms_MaterialTextures
-    {
-        array<texture2d<float, access::sample>, MAX_NUM_TEXTURES> Textures;
-    };
-    constant Uniforms_MaterialTextures & MaterialTextures;
+    constant texture2d<float, access::sample>* MaterialTextures;
     sampler LinearSampler;
     float4 Shade(uint matID, float2 uv, float3 worldPos, float3 normal)
     {
         float nDotl = dot(normal, (-LightUniformBlock.lightDirection.xyz));
         Material mat = MaterialUniform.Materials[matID];
-        float4 matColor = (((mat.TextureFlags & (uint)(1)))?(MaterialTextures.Textures[mat.AlbedoTexID].sample(LinearSampler, uv)):(mat.Color));
+		float4 texColor = MaterialTextures[mat.AlbedoTexID].sample(LinearSampler, uv);
+        float4 matColor = ((mat.TextureFlags & 1) ? texColor : mat.Color);
+
         float3 viewVec = normalize((worldPos - CameraUniform.camPosition.xyz));
         if ((nDotl < 0.05))
         {
@@ -105,7 +71,7 @@ struct Fragment_Shader
         float3 diffuse = ((LightUniformBlock.lightColor.xyz * matColor.xyz) * (float3)(nDotl));
         float3 specular = (LightUniformBlock.lightColor.xyz * (float3)(pow(saturate(dot(reflect((-LightUniformBlock.lightDirection.xyz), normal), viewVec)), SPECULAR_EXP)));
         float3 finalColor = saturate((diffuse + (specular * (float3)(0.5))));
-#if USE_SHADOWS!=0
+#if USE_SHADOWS != 0
         float4 shadowMapPos = ((LightUniformBlock.lightViewProj)*(float4(worldPos, 1.0)));
         (shadowMapPos.y = (-shadowMapPos.y));
         (shadowMapPos.xy = ((shadowMapPos.xy + (float2)(1.0)) * (float2)(0.5)));
@@ -139,7 +105,7 @@ texture2d<float> VSM,sampler VSMSampler,
 texture2d<float> VSMRed,texture2d<float> VSMGreen,texture2d<float> VSMBlue,
 #endif
 #endif
-constant Uniforms_LightUniformBlock & LightUniformBlock,constant Uniforms_CameraUniform & CameraUniform,constant Uniforms_MaterialUniform & MaterialUniform,constant Uniforms_MaterialTextures & MaterialTextures,sampler LinearSampler) :
+constant Uniforms_LightUniformBlock & LightUniformBlock,constant Uniforms_CameraUniform & CameraUniform,constant Uniforms_MaterialUniform & MaterialUniform,constant texture2d<float, access::sample>* MaterialTextures,sampler LinearSampler) :
 
 #if USE_SHADOWS!=0
 VSM(VSM),VSMSampler(VSMSampler),
@@ -151,23 +117,10 @@ VSMRed(VSMRed),VSMGreen(VSMGreen),VSMBlue(VSMBlue),
 LightUniformBlock(LightUniformBlock),CameraUniform(CameraUniform),MaterialUniform(MaterialUniform),MaterialTextures(MaterialTextures),LinearSampler(LinearSampler) {}
 };
 
-
 fragment float4 stageMain(
-    Fragment_Shader::VSOutput input [[stage_in]],
-#if USE_SHADOWS!=0
-    texture2d<float> VSM [[texture(15)]],
-    sampler VSMSampler [[sampler(1)]],
-#if PT_USE_CAUSTICS!=0
-    texture2d<float> VSMRed [[texture(17)]],
-    texture2d<float> VSMGreen [[texture(18)]],
-    texture2d<float> VSMBlue [[texture(19)]],
-#endif
-#endif
-    constant Fragment_Shader::Uniforms_LightUniformBlock & LightUniformBlock [[buffer(10)]],
-    constant Fragment_Shader::Uniforms_CameraUniform & CameraUniform [[buffer(11)]],
-    constant Fragment_Shader::Uniforms_MaterialUniform & MaterialUniform [[buffer(12)]],
-    constant Fragment_Shader::Uniforms_MaterialTextures & MaterialTextures [[buffer(13)]],
-    sampler LinearSampler [[sampler(14)]])
+    Fragment_Shader::VSOutput input                 [[stage_in]],
+    DECLARE_ARG_DATA()
+)
 {
     Fragment_Shader::VSOutput input0;
     input0.Position = float4(input.Position.xyz, 1.0 / input.Position.w);
@@ -177,18 +130,19 @@ fragment float4 stageMain(
     input0.MatID = input.MatID;
     Fragment_Shader main(
 #if USE_SHADOWS!=0
-    VSM,
-    VSMSampler,
+	VSM,
+	VSMSampler,
 #if PT_USE_CAUSTICS!=0
-    VSMRed,
-    VSMGreen,
-    VSMBlue,
+	VSMRed,
+	VSMGreen,
+	VSMBlue,
 #endif
 #endif
-    LightUniformBlock,
-    CameraUniform,
-    MaterialUniform,
-    MaterialTextures,
-    LinearSampler);
+	fsDataPerFrame.LightUniformBlock,
+	fsDataPerFrame.CameraUniform,
+	fsDataPerFrame.MaterialUniform,
+	fsData.MaterialTextures,
+	LinearSampler
+	);
     return main.main(input0);
 }

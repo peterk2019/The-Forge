@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -22,11 +22,12 @@
  * under the License.
 */
 
+// Shader for Skybox in Unit Test 01 - Transformations
+
 #include <metal_stdlib>
 using namespace metal;
 
-struct VSInput
-{
+struct VSInput {
     float4 Position [[attribute(0)]];
 };
 
@@ -35,14 +36,15 @@ struct VSOutput {
     float4 TexCoord;
 };
 
-fragment float4 stageMain(VSOutput input                [[stage_in]],
-                          texture2d<float> RightText    [[texture(0)]],
-                          texture2d<float> LeftText     [[texture(1)]],
-                          texture2d<float> TopText      [[texture(2)]],
-                          texture2d<float> BotText      [[texture(3)]],
-                          texture2d<float> FrontText    [[texture(4)]],
-                          texture2d<float> BackText     [[texture(5)]],
-                          sampler uSampler0             [[sampler(0)]])
+fragment float4 stageMain(VSOutput input                              [[stage_in]],
+						  texture2d<float,access::sample> RightText   [[texture(0)]],
+						  texture2d<float,access::sample> LeftText    [[texture(1)]],
+						  texture2d<float,access::sample> TopText     [[texture(2)]],
+						  texture2d<float,access::sample> BotText     [[texture(3)]],
+						  texture2d<float,access::sample> FrontText   [[texture(4)]],
+						  texture2d<float,access::sample> BackText    [[texture(5)]],
+						  sampler uSampler0                           [[sampler(0)]]
+)
 {
     float2 newtextcoord;
     float side = round(input.TexCoord.w);

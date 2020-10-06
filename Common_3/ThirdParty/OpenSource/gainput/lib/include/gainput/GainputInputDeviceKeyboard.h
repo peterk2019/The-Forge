@@ -8,6 +8,7 @@ namespace gainput
 /// All valid device buttons for InputDeviceKeyboard.
 enum Key
 {
+	KeyInvalid =-1,
 	KeyEscape,
 	KeyF1,
 	KeyF2,
@@ -247,8 +248,7 @@ public:
 	/// Sets if text input is enabled and therefore if calling GetNextCharacter() make sense.
 	void SetTextInputEnabled(bool enabled);
 	/// Returns the next pending input character if text input is enabled.
-	char GetNextCharacter(gainput::DeviceButtonId buttonId=gainput::InvalidDeviceId);
-
+	wchar_t* GetTextInput(uint32_t* count);
 	/// Returns the platform-specific implementation of this device (internal use only).
 	InputDeviceKeyboardImpl* GetPimpl() { return impl_; }
 

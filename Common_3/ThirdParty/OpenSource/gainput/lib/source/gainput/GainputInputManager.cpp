@@ -14,6 +14,7 @@
 #include "keyboard/GainputInputDeviceKeyboardWinRaw.h"
 #include "mouse/GainputInputDeviceMouseWin.h"
 #include "mouse/GainputInputDeviceMouseWinRaw.h"
+#include "pad/GainputInputDevicePadWin.h"
 #elif defined(GAINPUT_PLATFORM_ANDROID)
 #include <time.h>
 #include <jni.h>
@@ -24,6 +25,12 @@ static gainput::InputManager* gGainputInputManager;
 #elif defined(GAINPUT_PLATFORM_IOS) || defined(GAINPUT_PLATFORM_MAC) || defined(GAINPUT_PLATFORM_TVOS)
 #include <mach/mach.h>
 #include <mach/clock.h>
+#elif defined(GAINPUT_PLATFORM_GGP) || defined(GAINPUT_PLATFORM_NX64)
+#include <time.h>
+#elif defined(GAINPUT_PLATFORM_ORBIS)
+#include <time.h>
+#elif defined(GAINPUT_PLATFORM_PROSPERO)
+#include <time.h>
 #endif
 
 #include <stdlib.h>
@@ -203,7 +210,7 @@ InputManager::GetTime() const
 {
 	if (useSystemTime_)
 	{
-#if defined(GAINPUT_PLATFORM_LINUX) || defined(GAINPUT_PLATFORM_ANDROID)
+#if defined(GAINPUT_PLATFORM_LINUX) || defined(GAINPUT_PLATFORM_ANDROID) || defined(GAINPUT_PLATFORM_GGP) || defined(GAINPUT_PLATFORM_ORBIS) || defined(GAINPUT_PLATFORM_PROSPERO)
 	struct timespec ts;
 	if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
 	{
@@ -230,6 +237,15 @@ InputManager::GetTime() const
 	clock_get_time(cclock, &mts);
 	mach_port_deallocate(mach_task_self(), cclock);
 	uint64_t t = mts.tv_sec*1000ul + mts.tv_nsec/1000000ul;
+	return t;
+#elif defined(GAINPUT_PLATFORM_NX64)	
+	struct timespec ts;
+	if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
+	{
+		return -1;
+	}
+
+	uint64_t t = ts.tv_sec * 1000ul + ts.tv_nsec / 1000000ul;
 	return t;
 #else
 #error Gainput: No time support
@@ -457,13 +473,23 @@ InputManager::HandleMessage(const MSG& msg)
 				mouseImpl->HandleMessage(msg);
 			}
 		}
+		else if (it->second->GetType() == InputDevice::DT_PAD)
+		{
+			if (msg.message == WM_DEVICECHANGE || msg.message == WM_INPUT)
+			{
+				InputDevicePad* pad = static_cast<InputDevicePad*>(it->second);
+				InputDevicePadImplWin* padImpl = static_cast<InputDevicePadImplWin*>(pad->GetPimpl());
+				GAINPUT_ASSERT(padImpl);
+				padImpl->HandleMessage(msg);
+			}
+		}
 	}
 }
 #endif
 
 #if defined(GAINPUT_PLATFORM_ANDROID)
 int32_t
-InputManager::HandleInput(AInputEvent* event)
+InputManager::HandleInput(AInputEvent* event, ANativeActivity* activity)
 {
 	int handled = 0;
 	for (DeviceMap::const_iterator it = devices_.begin();
@@ -488,7 +514,14 @@ InputManager::HandleInput(AInputEvent* event)
 			InputDeviceKeyboard* keyboard = static_cast<InputDeviceKeyboard*>(it->second);
 			InputDeviceKeyboardImplAndroid* keyboardImpl = static_cast<InputDeviceKeyboardImplAndroid*>(keyboard->GetPimpl());
 			GAINPUT_ASSERT(keyboardImpl);
-			handled |= keyboardImpl->HandleInput(event);
+			handled |= keyboardImpl->HandleInput(event, activity);
+		}
+		else if (it->second->GetType() == InputDevice::DT_PAD)
+		{
+			InputDevicePad* pad = static_cast<InputDevicePad*>(it->second);
+			InputDevicePadImplAndroid* padImpl = static_cast<InputDevicePadImplAndroid*>(pad->GetPimpl());
+			GAINPUT_ASSERT(padImpl);
+			handled |= padImpl->HandleInput(event);
 		}
 	}
 	return handled;

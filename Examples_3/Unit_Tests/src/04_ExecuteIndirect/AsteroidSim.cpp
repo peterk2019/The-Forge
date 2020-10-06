@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -40,17 +40,17 @@
 
 //--------------------------------------------------------------------------------------------
 //
-// Copyright (C) 2009 - 2016 Confetti Interactive Inc.
+// Copyright (C) 2009 - 2016 The Forge Interactive Inc.
 // All rights reserved.
 //
 // This source may not be distributed and/or modified without expressly written permission
-// from Confetti Interactive Inc.
+// from The Forge Interactive Inc.
 //
 //--------------------------------------------------------------------------------------------
 
 #include "AsteroidSim.h"
 #include "Random.h"
-#if !defined(TARGET_IOS)
+#if !defined(TARGET_IOS) && !defined(__ANDROID__) && !defined(NX64)
 #include <immintrin.h>
 #endif
 
@@ -157,7 +157,13 @@ static inline float VeryApproxLog2f(float x)
 	return (float)ux.i * 1.1920928955078125e-7f - 126.94269504f;
 }
 
-void AsteroidSimulation::update(float deltaTime, unsigned startIdx, unsigned endIdx, const vec3& cameraPosition)
+void AsteroidSimulation::Exit()
+{
+	asteroidsStatic.set_capacity(0);
+	asteroidsDynamic.set_capacity(0);
+}
+
+void AsteroidSimulation::Update(float deltaTime, unsigned startIdx, unsigned endIdx, const vec3& cameraPosition)
 {
 	//taken from intel demo
 	static const float minSubdivSizeLog2 = log2f(0.0019f);
@@ -173,7 +179,7 @@ void AsteroidSimulation::update(float deltaTime, unsigned startIdx, unsigned end
 			staticAsteroid.rotationSpeed * deltaTime,
 			vec3(staticAsteroid.rotationAxis.getX(), staticAsteroid.rotationAxis.getY(), staticAsteroid.rotationAxis.getZ()));
 
-#if defined(_DURANGO) || defined(TARGET_IOS)
+#if defined(XBOX) || defined(TARGET_IOS) || defined(NX64)
 		// XBoxOne/iOS don't support some of these SSE instructions.
 		// 0xC000001D: Illegal Instruction
 		// Implement it without SSE

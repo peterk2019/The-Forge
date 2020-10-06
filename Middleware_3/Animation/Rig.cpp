@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -24,10 +24,10 @@
 
 #include "Rig.h"
 
-void Rig::Initialize(const char* skeletonFile)
+void Rig::Initialize(const ResourceDirectory resourceDir, const char* fileName)
 {
 	// Reading skeleton.
-	if (!LoadSkeleton(skeletonFile))
+	if (!LoadSkeleton(resourceDir, fileName))
 		return;    //need error catching
 
 	mNumSoaJoints = mSkeleton.num_soa_joints();
@@ -58,6 +58,10 @@ void Rig::Destroy()
 
 	ozz::memory::Allocator* allocator = ozz::memory::default_allocator();
 	allocator->Deallocate(mJointModelMats);
+
+	mJointWorldMats.set_capacity(0);
+	mBoneWorldMats.set_capacity(0);
+	mJointScales.set_capacity(0);
 }
 
 void Rig::Pose(const Matrix4& rootTransform)
@@ -129,23 +133,36 @@ void Rig::Pose(const Matrix4& rootTransform)
 	}
 }
 
-bool Rig::LoadSkeleton(const char* fileName)
+bool Rig::LoadSkeleton(const ResourceDirectory resourceDir, const char* fileName)
 {
-	ozz::io::File file(fileName, "rb");
-	if (!file.opened())
+	FileStream file = {};
+	if (!fsOpenStreamFromPath(resourceDir, fileName, FM_READ_BINARY, &file))
 	{
-		ErrorMsg("Cannot open skeleton file");
+		LOGF(eERROR, "Cannot open skeleton file");
 		return false;
 	}
 
-	ozz::io::IArchive archive(&file);
+	ssize_t size = fsGetStreamFileSize(&file);
+	void* data = tf_malloc(size);
+	fsReadFromStream(&file, data, (size_t)size);
+	fsCloseStream(&file);
+
+	// Archive is doing a lot of freads from disk which is slow on some platforms and also generally not good
+	// So we just read the entire file once into a mem stream so the freads from IArchive are actually
+	// only reading from system memory instead of disk or network
+	FileStream memStream = {};
+	fsOpenStreamFromMemory(data, size, FM_READ, true, &memStream);
+
+	ozz::io::IArchive archive(&memStream);
 	if (!archive.TestTag<ozz::animation::Skeleton>())
 	{
-		ErrorMsg("Skeleton Archive doesn't contain the expected object type");
+		LOGF(eERROR, "Skeleton Archive doesn't contain the expected object type");
 		return false;
 	}
 
 	archive >> mSkeleton;
+
+	fsCloseStream(&memStream);
 
 	return true;
 }
@@ -154,8 +171,23 @@ int Rig::FindJoint(const char* jointName)
 {
 	for (unsigned int i = 0; i < mNumJoints; i++)
 	{
-		if (strstr(mSkeleton.joint_names()[i], jointName))
+		if (strcmp(mSkeleton.joint_names()[i], jointName) == 0)
 			return i;
 	}
 	return -1;
+}
+
+void Rig::FindJointChain(const char* jointNames[], size_t numNames, int jointChain[])
+{
+	int found = 0;
+	for (int i = 0; i < mSkeleton.num_joints() && found < numNames; ++i)
+	{
+		const char* joint_name = mSkeleton.joint_names()[i];
+		if (strcmp(joint_name, jointNames[found]) == 0)
+		{
+			jointChain[found] = i;
+			++found;
+			i = 0;
+		}
+	}
 }

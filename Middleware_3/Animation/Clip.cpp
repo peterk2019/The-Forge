@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -24,9 +24,15 @@
 
 #include "Clip.h"
 
-void Clip::Initialize(const char* animationFile, Rig* rig) { LoadClip(animationFile); }
+void Clip::Initialize(const ResourceDirectory resourceDir, const char* fileName, Rig* rig)
+{
+	LoadClip(resourceDir, fileName);
+}
 
-void Clip::Destroy() { mAnimation.Deallocate(); }
+void Clip::Destroy()
+{
+	mAnimation.Deallocate();
+}
 
 bool Clip::Sample(ozz::animation::SamplingCache* cacheInput, ozz::Range<SoaTransform>& localTransOutput, float timeRatio)
 {
@@ -44,22 +50,36 @@ bool Clip::Sample(ozz::animation::SamplingCache* cacheInput, ozz::Range<SoaTrans
 	return true;
 }
 
-bool Clip::LoadClip(const char* fileName)
+bool Clip::LoadClip(const ResourceDirectory resourceDir, const char* fileName)
 {
-	ozz::io::File file(fileName, "rb");
-	if (!file.opened())
+	FileStream file = {};
+	if (!fsOpenStreamFromPath(resourceDir, fileName, FM_READ_BINARY, &file))
 	{
-		ErrorMsg("Cannot open file ");
+		LOGF(eERROR, "Cannot open skeleton file");
 		return false;
 	}
 
-	ozz::io::IArchive archive(&file);
+	ssize_t size = fsGetStreamFileSize(&file);
+	void* data = tf_malloc(size);
+	fsReadFromStream(&file, data, (size_t)size);
+	fsCloseStream(&file);
+
+	// Archive is doing a lot of freads from disk which is slow on some platforms and also generally not good
+	// So we just read the entire file once into a mem stream so the freads from IArchive are actually
+	// only reading from system memory instead of disk or network
+	FileStream memStream = {};
+	fsOpenStreamFromMemory(data, size, FM_READ, true, &memStream);
+
+	ozz::io::IArchive archive(&memStream);
 	if (!archive.TestTag<ozz::animation::Animation>())
 	{
-		ErrorMsg("Archive doesn't contain the expected object type.");
+		LOGF(eERROR, "Archive doesn't contain the expected object type.");
 		return false;
 	}
 
 	archive >> mAnimation;
+
+	fsCloseStream(&memStream);
+
 	return true;
 }

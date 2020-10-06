@@ -2,6 +2,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#include "argument_buffers.h"
+
 struct Fragment_Shader
 {
     texture2d<float> VSM;
@@ -66,28 +68,21 @@ VSM(VSM),VSMSampler(VSMSampler)
  {}
 };
 
-
 fragment float4 stageMain(
     Fragment_Shader::VSOutput input [[stage_in]],
-    texture2d<float> VSM [[texture(0)]],
-    sampler VSMSampler [[sampler(0)]]
-#if PT_USE_CAUSTICS!=0
-    ,texture2d<float> VSMRed [[texture(1)]],
-    texture2d<float> VSMGreen [[texture(2)]],
-    texture2d<float> VSMBlue [[texture(3)]]
-#endif
-    )
+	DECLARE_ARG_DATA()
+)
 {
     Fragment_Shader::VSOutput input0;
     input0.Position = float4(input.Position.xyz, 1.0 / input.Position.w);
     Fragment_Shader main(
-    VSM,
-    VSMSampler
-#if PT_USE_CAUSTICS!=0
-    ,VSMRed,
-    VSMGreen,
-    VSMBlue
-#endif
-    );
+	 VSM,
+	 VSMSampler
+ #if PT_USE_CAUSTICS!=0
+	 ,VSMRed,
+	 VSMGreen,
+	 VSMBlue
+ #endif
+	);
     return float4(main.main(input0), 0.0, 0.0);
 }

@@ -10,10 +10,16 @@
 #ifndef VECTORMATH_VEC2D_HPP
 #define VECTORMATH_VEC2D_HPP
 
+#include <cmath>
+#include <cstdio>
+
 namespace Vectormath
 {
 
+// Orbis already has Vector2
+#if !VECTORMATH_MODE_SCE
 class Vector2;
+#endif
 class Point2;
 class IVector2;
 class UVector2;
@@ -21,7 +27,8 @@ class UVector2;
 // ========================================================
 // A 2-D unpadded vector (sizeof = 8 bytes)
 // ========================================================
-
+// Orbis already has Vector2
+#if !VECTORMATH_MODE_SCE
 class Vector2
 {
     float mX;
@@ -134,6 +141,10 @@ inline const Vector2 operator * (float scalar, const Vector2 & vec);
 //
 inline const Vector2 absPerElem(const Vector2 & vec);
 
+// Multiply a 2-D vector per element
+//
+inline const Vector2 mulPerElem(const Vector2 & vec0, const Vector2 & vec1);
+
 // Maximum of two 2-D vectors per element
 //
 inline const Vector2 maxPerElem(const Vector2 & vec0, const Vector2 & vec1);
@@ -189,7 +200,7 @@ inline void print(const Vector2 & vec);
 inline void print(const Vector2 & vec, const char * name);
 
 #endif // VECTORMATH_DEBUG
-
+#endif
 // ========================================================
 // A 2-D unpadded point (sizeof = 8 bytes)
 // ========================================================
@@ -331,7 +342,8 @@ inline void print(const Point2 & pnt, const char * name);
 // ================================================================================================
 // Vector2 implementation
 // ================================================================================================
-
+// Orbis already has Vector2
+#if !VECTORMATH_MODE_SCE
 inline Vector2::Vector2(float _x, float _y)
     : mX(_x), mY(_y)
 {
@@ -473,6 +485,11 @@ inline const Vector2 absPerElem(const Vector2 & vec)
 #endif
 }
 
+inline const Vector2 mulPerElem(const Vector2 & vec0, const Vector2 & vec1)
+{
+    return Vector2(vec0[0] * vec1[0], vec0[1] * vec1[1]);
+}
+
 inline const Vector2 maxPerElem(const Vector2 & vec0, const Vector2 & vec1)
 {
     return Vector2((vec0.getX() > vec1.getX()) ? vec0.getX() : vec1.getX(),
@@ -551,7 +568,7 @@ inline void print(const Vector2 & vec, const char * name)
 }
 
 #endif // VECTORMATH_DEBUG
-
+#endif
 // ================================================================================================
 // Point2 implementation
 // ================================================================================================
@@ -695,6 +712,11 @@ inline float dist(const Point2 & pnt0, const Point2 & pnt1)
     return length(pnt1 - pnt0);
 }
 
+inline float dist(const Vector2& v0, const Vector2& v1)
+{
+	return length(v1 - v0);
+}
+
 inline const Point2 lerp(float t, const Point2 & pnt0, const Point2 & pnt1)
 {
     return (pnt0 + ((pnt1 - pnt0) * t));
@@ -714,7 +736,7 @@ inline void print(const Point2 & pnt, const char * name)
 
 #endif // VECTORMATH_DEBUG
 
-//========================================= #ConfettiMathExtensionsBegin ================================================
+//========================================= #TheForgeMathExtensionsBegin ================================================
 
 // ========================================================
 // A 2-D unpadded vector (sizeof = 8 bytes)
@@ -806,6 +828,10 @@ public:
 	// Negate all elements of a 2-D vector
 	//
 	inline const IVector2 operator - () const;
+	
+	// true if x and y are equal
+	//
+	inline const bool operator == (const IVector2 &v) const;
 
 	// Construct x axis
 	//
@@ -964,6 +990,11 @@ inline IVector2 & IVector2::operator /= (int scalar)
 inline const IVector2 IVector2::operator - () const
 {
 	return IVector2(-mX, -mY);
+}
+
+inline const bool IVector2::operator == (const IVector2 &v)  const 
+{
+	return (getX() == v.getX() && getY() == v.getY()); 
 }
 
 inline const IVector2 IVector2::xAxis()
@@ -1144,17 +1175,17 @@ inline uint minElem(const UVector2 & vec);
 
 #ifdef VECTORMATH_DEBUG
 
-// Pruint a 2-D vector
+// Print a 2-D vector
 // NOTE:
 // Function is only defined when VECTORMATH_DEBUG is defined.
 //
-inline void pruint(const UVector2 & vec);
+inline void print(const UVector2 & vec);
 
-// Pruint a 2-D vector and an associated string identifier
+// Print a 2-D vector and an associated string identifier
 // NOTE:
 // Function is only defined when VECTORMATH_DEBUG is defined.
 //
-inline void pruint(const UVector2 & vec, const char * name);
+inline void print(const UVector2 & vec, const char * name);
 
 #endif // VECTORMATH_DEBUG
 
@@ -1302,12 +1333,12 @@ inline uint minElem(const UVector2 & vec)
 
 #ifdef VECTORMATH_DEBUG
 
-inline void pruint(const UVector2 & vec)
+inline void print(const UVector2 & vec)
 {
 	std::printf("( %u %u )\n", vec.getX(), vec.getY());
 }
 
-inline void pruint(const UVector2 & vec, const char * name)
+inline void print(const UVector2 & vec, const char * name)
 {
 	std::printf("%s: ( %u %u )\n", name, vec.getX(), vec.getY());
 }
@@ -1317,6 +1348,8 @@ inline void pruint(const UVector2 & vec, const char * name)
 // ========================================================
 // A 2x2 matrix in array-of-structures format
 // ========================================================
+// Orbis already has Matrix2
+#if !VECTORMATH_MODE_SCE
 struct Matrix2
 {
 	Vector2 mCol0;
@@ -1405,7 +1438,8 @@ inline float Matrix2::getElem(int col, int row) const
 {
 	return getCol(col)[row];
 }
-//========================================= #ConfettiMathExtensionsEnd ==================================================
+#endif
+//========================================= #TheForgeMathExtensionsEnd ==================================================
 
 } // namespace Vectormath
 

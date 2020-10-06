@@ -26,7 +26,7 @@ freely, subject to the following restrictions:
 #include <stdio.h>
 #include "soloud_openmpt.h"
 #include "soloud_file.h"
-#include "../../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../../OS/Interfaces/IMemory.h"
 
 extern "C"
 {
@@ -104,11 +104,11 @@ namespace SoLoud
 	{
 		if (mData)
 		{
-			conf_free(mData);
+			tf_free(mData);
 		}
 
 		mDataLen = aFile->length();
-		mData = (char*)conf_calloc(mDataLen, sizeof(char));
+		mData = (char*)tf_calloc(mDataLen, sizeof(char));
 		if (!mData)
 		{
 			mData = 0;
@@ -120,7 +120,7 @@ namespace SoLoud
 		void *mpf = openmpt_module_create_from_memory((const void*)mData, mDataLen, NULL, NULL, NULL);
 		if (!mpf)
 		{
-			conf_free(mData);
+			tf_free(mData);
 			mDataLen = 0;
 			return FILE_LOAD_FAILED;
 		}
@@ -139,14 +139,14 @@ namespace SoLoud
 	Openmpt::~Openmpt()
 	{
 		stop();
-		conf_free(mData);
+		tf_free(mData);
 		mData = 0;
 		mDataLen = 0;
 	}
 
 	AudioSourceInstance * Openmpt::createInstance()
 	{
-		return conf_new(OpenmptInstance, this);
+		return tf_new(OpenmptInstance, this);
 	}
 
 };

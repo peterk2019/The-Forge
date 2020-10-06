@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -25,6 +25,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#include "argument_buffers.h"
+
 #define MAX_LOD_OFFSETS (10)
 
 struct UniformBlock0
@@ -36,40 +38,6 @@ struct UniformBlock0
     uint endIdx;
     int numLODs;
     int indexOffsets[MAX_LOD_OFFSETS];
-};
-
-struct AsteroidDynamic
-{
-	float4x4 transform;
-    uint indexStart;
-    uint indexEnd;
-    uint padding[2];
-};
-
-struct AsteroidStatic
-{
-	float4 rotationAxis;
-	float4 surfaceColor;
-	float4 deepColor;
-
-	float scale;
-	float orbitSpeed;
-	float rotationSpeed;
-
-    uint textureID;
-    uint vertexStart;
-    uint padding[3];
-};
-
-struct IndirectDrawCommand
-{
-    //uint drawID;
-    uint indexCount;
-    uint instanceCount;
-    uint startIndex;
-    uint vertexOffset;
-    uint startInstance;
- //   uint padding[2];
 };
 
 //taken from our math library
@@ -95,11 +63,12 @@ float4x4 MakeRotationMatrix(float angle, float3 axis)
 }
 
 //[numthreads(128,1,1)]
-kernel void stageMain(uint3 threadID                            [[thread_position_in_grid]],
-                     constant UniformBlock0& uniformBlock       [[buffer(0)]],
-                     device AsteroidStatic* asteroidsStatic     [[buffer(1)]],
-                     device AsteroidDynamic* asteroidsDynamic   [[buffer(2)]],
-                     device IndirectDrawCommand* drawCmds       [[buffer(3)]])
+kernel void stageMain(uint3 threadID               [[thread_position_in_grid]],
+        device AsteroidStatic* asteroidsStatic     [[buffer(0)]],
+	    device AsteroidDynamic* asteroidsDynamic   [[buffer(1)]],
+		device IndirectDrawCommand* drawCmds       [[buffer(2)]],
+        constant UniformBlock0& uniformBlock       [[buffer(3)]]
+)
 {
     const float minSubdivSizeLog2 = log2(0.0019);
     

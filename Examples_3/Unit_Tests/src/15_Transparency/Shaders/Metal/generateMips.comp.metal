@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2018-2019 Confetti Interactive Inc.
+* Copyright (c) 2018-2020 The Forge Interactive Inc.
 *
 * This file is part of The-Forge
 * (see https://github.com/ConfettiFX/The-Forge).
@@ -27,8 +27,8 @@ using namespace metal;
 
 struct Compute_Shader
 {
-    texture2d<float, access::read_write> Source;
-    texture2d<float, access::read_write> Destination;
+    texture2d<float, access::read> Source;
+    texture2d<float, access::write> Destination;
     struct Uniforms_RootConstant
     {
         uint2 MipSize;
@@ -51,8 +51,8 @@ struct Compute_Shader
     };
 
     Compute_Shader(
-		texture2d<float, access::read_write> Source,
-        texture2d<float, access::read_write> Destination,
+		texture2d<float, access::read> Source,
+        texture2d<float, access::write> Destination,
         constant Uniforms_RootConstant & RootConstant) :
 			Source(Source),
     		Destination(Destination),
@@ -62,16 +62,14 @@ struct Compute_Shader
 
 //[numthreads(16, 16, 1)]
 kernel void stageMain(
-uint3 id [[thread_position_in_grid]],
-    texture2d<float, access::read_write> Source [[texture(0)]],
-    texture2d<float, access::read_write> Destination [[texture(1)]],
-    constant Compute_Shader::Uniforms_RootConstant & RootConstant [[buffer(0)]])
+    uint3 id [[thread_position_in_grid]],
+	texture2d<float, access::read> Source       [[texture(0)]],
+    texture2d<float, access::write> Destination [[texture(1)]],
+    constant Compute_Shader::Uniforms_RootConstant& RootConstant [[buffer(UPDATE_FREQ_USER)]]
+)
 {
     uint3 id0;
     id0 = id;
-    Compute_Shader main(
-    Source,
-    Destination,
-    RootConstant);
+    Compute_Shader main(Source, Destination, RootConstant);
     return main.main(id0);
 }

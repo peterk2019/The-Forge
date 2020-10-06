@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018-2019 Confetti Interactive Inc.
+ * Copyright (c) 2018-2020 The Forge Interactive Inc.
  *
  * This file is part of The-Forge
  * (see https://github.com/ConfettiFX/The-Forge).
@@ -25,13 +25,12 @@
 #pragma once
 
 #include "../../Common_3/OS/Math/MathTypes.h"
+#include "../../Common_3/OS/Interfaces/IFileSystem.h"
 
 #include "../../Common_3/ThirdParty/OpenSource/ozz-animation/include/ozz/animation/runtime/animation.h"
 #include "../../Common_3/ThirdParty/OpenSource/ozz-animation/include/ozz/animation/runtime/sampling_job.h"
 #include "../../Common_3/ThirdParty/OpenSource/ozz-animation/include/ozz/base/memory/allocator.h"
-#include "../../Common_3/ThirdParty/OpenSource/ozz-animation/include/ozz/base/io/stream.h"
 #include "../../Common_3/ThirdParty/OpenSource/ozz-animation/include/ozz/base/io/archive.h"
-#include "../../Common_3/ThirdParty/OpenSource/ozz-animation/include/ozz/base/log.h"
 
 #include "Rig.h"
 
@@ -41,7 +40,7 @@ class Clip
 {
 	public:
 	// Set up a clip associated with a rig and read from an ozz animation file path
-	void Initialize(const char* animationFile, Rig* rig);
+	void Initialize(const ResourceDirectory resourceDir, const char* fileName, Rig* rig);
 
 	// Must be called to clean up if the clip was initialized
 	void Destroy();
@@ -54,7 +53,7 @@ class Clip
 
 	private:
 	// Load a clip from an ozz animation file
-	bool LoadClip(const char* animationFile);
+	bool LoadClip(const ResourceDirectory resourceDir, const char* fileName);
 
 	// Runtime animation.
 	ozz::animation::Animation mAnimation;

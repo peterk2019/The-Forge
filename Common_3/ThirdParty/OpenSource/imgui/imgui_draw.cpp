@@ -42,7 +42,7 @@ Index of this file:
 #endif
 #endif
 
-#include "../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../OS/Interfaces/IMemory.h"
 
 // Visual Studio warnings
 #ifdef _MSC_VER
@@ -382,7 +382,7 @@ void ImDrawList::ClearFreeMemory()
 
 ImDrawList* ImDrawList::CloneOutput() const
 {	
-    ImDrawList* dst = conf_placement_new<ImDrawList>(conf_malloc(sizeof(ImDrawList)), _Data);
+    ImDrawList* dst = tf_placement_new<ImDrawList>(tf_malloc(sizeof(ImDrawList)), _Data);
     dst->CmdBuffer = CmdBuffer;
     dst->IdxBuffer = IdxBuffer;
     dst->VtxBuffer = VtxBuffer;
@@ -1514,7 +1514,7 @@ ImFont* ImFontAtlas::AddFont(const ImFontConfig* font_cfg)
     // Create new font
 	if (!font_cfg->MergeMode)
 	{
-		ImFont * toAdd = conf_placement_new<ImFont>(ImGui::MemAlloc(sizeof(ImFont)));
+		ImFont * toAdd = tf_placement_new<ImFont>(ImGui::MemAlloc(sizeof(ImFont)));
 		Fonts.push_back(toAdd);
 	}
     else
@@ -1575,20 +1575,21 @@ ImFont* ImFontAtlas::AddFontFromFileTTF(const char* filename, float size_pixels,
 {
     IM_ASSERT(!Locked && "Cannot modify a locked ImFontAtlas between NewFrame() and EndFrame/Render()!");
     size_t data_size = 0;
-	File toOpen;
-	toOpen.Open(filename, FileMode::FM_ReadBinary, FSR_Absolute);
-	if (!toOpen.IsOpen())
+
+	FileStream fh = {};
+	if (!fsOpenStreamFromPath(RD_FONTS, filename, FM_READ_BINARY, &fh))
 	{
 		return NULL;
 	}
+
 	// Check leaks
-	void* data = ImGui::MemAlloc(toOpen.GetSize());
+	void* data = ImGui::MemAlloc(fsGetStreamFileSize(&fh));
     if (!data)
     {
         IM_ASSERT(0); // Could not load file.
         return NULL;
     }
-	toOpen.Read(data, toOpen.GetSize());
+    fsReadFromStream(&fh, data, fsGetStreamFileSize(&fh));
 
     ImFontConfig font_cfg = font_cfg_template ? *font_cfg_template : ImFontConfig();
     if (font_cfg.Name[0] == '\0')

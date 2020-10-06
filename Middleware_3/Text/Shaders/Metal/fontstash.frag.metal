@@ -26,19 +26,16 @@ constant Uniforms_uRootConstants & uRootConstants,texture2d<float> uTex0,sampler
 uRootConstants(uRootConstants),uTex0(uTex0),uSampler0(uSampler0) {}
 };
 
-
 fragment float4 stageMain(
-    Fragment_Shader::PsIn In [[stage_in]],
-    constant Fragment_Shader::Uniforms_uRootConstants & uRootConstants [[buffer(1)]],
-    texture2d<float> uTex0 [[texture(0)]],
-    sampler uSampler0 [[sampler(0)]])
+                          Fragment_Shader::PsIn In                                           [[stage_in]],
+						  texture2d<float> uTex0                                       [[texture(0)]],
+						  sampler uSampler0                                                   [[sampler(0)]],
+                          constant Fragment_Shader::Uniforms_uRootConstants& uRootConstants [[buffer(0)]]
+)
 {
     Fragment_Shader::PsIn In0;
     In0.position = float4(In.position.xyz, 1.0 / In.position.w);
     In0.texCoord = In.texCoord;
-    Fragment_Shader main(
-    uRootConstants,
-    uTex0,
-    uSampler0);
+    Fragment_Shader main(uRootConstants, uTex0, uSampler0);
     return main.main(In0);
 }

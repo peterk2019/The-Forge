@@ -24,7 +24,7 @@ freely, subject to the following restrictions:
 #include <string.h>
 #include "soloud.h"
 #include "soloud_speech.h"
-#include "../../../../OS/Interfaces/IMemoryManager.h"
+#include "../../../../OS/Interfaces/IMemory.h"
 
 
 namespace SoLoud
@@ -33,7 +33,7 @@ namespace SoLoud
 	{
 		mParent = aParent;			
 		mSynth.init(mParent->mBaseFrequency, mParent->mBaseSpeed, mParent->mBaseDeclination, mParent->mBaseWaveform);
-		mSample = (short*)conf_calloc(mSynth.mNspFr * 100, sizeof(short));
+		mSample = (short*)tf_calloc(mSynth.mNspFr * 100, sizeof(short));
 		mSynth.initsynth(mParent->mElement.getSize(), (unsigned char *)mParent->mElement.getData());
 		mOffset = 10;
 		mSampleCount = 10;
@@ -41,7 +41,7 @@ namespace SoLoud
 
     SpeechInstance::~SpeechInstance()
 	{
-       conf_free(mSample);
+       tf_free(mSample);
     }
 
 	static void writesamples(short * aSrc, float * aDst, int aCount)
@@ -144,6 +144,6 @@ namespace SoLoud
 
 	AudioSourceInstance *Speech::createInstance()
 	{
-		return conf_new(SpeechInstance, this);
+		return tf_new(SpeechInstance, this);
 	}	
 };
